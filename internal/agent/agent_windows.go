@@ -163,6 +163,9 @@ func (a *Agent) osEnablePoolService() error {
 	return fmt.Errorf("warm pools are only supported on Linux")
 }
 
+// osLock always succeeds: on Windows only the user data script starts the agent.
+func osLock() bool { return true }
+
 // osBasePath uses the machine PATH from the registry so tools installed by
 // the profile (Git, PowerShell 7) are visible to jobs.
 func (a *Agent) osBasePath(extra []string) string {

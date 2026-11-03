@@ -150,11 +150,16 @@ func (a *Agent) homeDir() string {
 // osSetupStorage formats local NVMe instance store (RAID 0 across disks)
 // and moves the work directory and Docker onto it.
 func (a *Agent) osSetupStorage(ctx context.Context) (string, error) {
+	if hddInstanceType(a.meta.InstanceType) {
+		a.Log.Info("instance storage is hard disks; keeping the work directory on EBS", "type", a.meta.InstanceType)
+		return "", nil
+	}
 	var devs []string
 	entries, _ := filepath.Glob("/sys/block/nvme*n1")
 	for _, e := range entries {
 		model, _ := os.ReadFile(filepath.Join(e, "device", "model"))
-		if strings.Contains(string(model), "Instance Storage") {
+		rotational, _ := os.ReadFile(filepath.Join(e, "queue", "rotational"))
+		if strings.Contains(string(model), "Instance Storage") && strings.TrimSpace(string(rotational)) != "1" {
 			devs = append(devs, "/dev/"+filepath.Base(e))
 		}
 	}
@@ -291,8 +296,50 @@ func (a *Agent) osRunnerCommand(dir string, env []string) *exec.Cmd {
 	return cmd
 }
 
+// osFinalizeFiles gives the runner user its files. A baked image already has
+// them right, and walking thousands of files on a lazily restored volume takes
+// seconds, so there only what was written for this job is changed.
 func (a *Agent) osFinalizeFiles(dir string) error {
-	return a.sh(context.Background(), "chown", "-R", a.user()+":"+a.user(), dir, stateDir())
+	ctx := context.Background()
+	owner := a.user() + ":" + a.user()
+	if u, err := user.Lookup(a.user()); err == nil && ownedBy(filepath.Join(dir, "bin"), u.Uid) {
+		// The files written for this job sit at the top level ("*" includes
+		// dotfiles in Go), plus the worker the cache patch replaces.
+		paths, _ := filepath.Glob(filepath.Join(dir, "*"))
+		if _, err := os.Stat(filepath.Join(dir, "bin", "Runner.Worker.dll")); err == nil {
+			paths = append(paths, filepath.Join(dir, "bin", "Runner.Worker.dll"))
+		}
+		if a.sh(ctx, "chown", append([]string{owner, dir}, paths...)...) == nil &&
+			a.sh(ctx, "chown", "-R", owner, stateDir()) == nil {
+			return nil
+		}
+	}
+	return a.sh(ctx, "chown", "-R", owner, dir, stateDir())
+}
+
+func ownedBy(path, uid string) bool {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	return ok && strconv.FormatUint(uint64(st.Uid), 10) == uid
+}
+
+var lockFile *os.File
+
+func osLock() bool {
+	os.MkdirAll("/run/truner", 0o755)
+	f, err := os.OpenFile("/run/truner/agent.lock", os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return true // never refuse to run a job because of the lock itself
+	}
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		f.Close()
+		return false
+	}
+	lockFile = f // held until the process exits
+	return true
 }
 
 func (a *Agent) hookPath(name string) string { return "/var/lib/truner/hooks/" + name + ".sh" }
@@ -363,13 +410,22 @@ func (a *Agent) osBakeCleanup(ctx context.Context) error {
 		}
 	}
 	// Make sure the runner user owns its files after root-run installs.
-	a.osFinalizeFiles(a.osRunnerDir())
+	a.sh(ctx, "chown", "-R", a.user()+":"+a.user(), a.osRunnerDir())
+	// Machines from this image start their job as soon as the network is up.
+	// The user data script only runs after cloud-init's later stages, which
+	// wait for snapd and take 5 to 20 seconds more on a fresh volume.
+	if err := enableBootUnit(); err != nil {
+		return err
+	}
 	exec.Command("sync").Run()
 	return nil
 }
 
-const poolUnit = `[Unit]
-Description=truner agent (warm pool machine)
+// bootUnit runs the job in the instance's user data at boot. Baked images and
+// warm pool machines have it. The agent's lock keeps the user data script
+// from starting a second agent.
+const bootUnit = `[Unit]
+Description=truner agent: runs this machine's job at boot
 Wants=network-online.target
 After=network-online.target
 
@@ -383,12 +439,17 @@ TasksMax=infinity
 WantedBy=multi-user.target
 `
 
-func (a *Agent) osEnablePoolService() error {
-	if err := os.WriteFile("/etc/systemd/system/truner-agent.service", []byte(poolUnit), 0o644); err != nil {
+func (a *Agent) osEnablePoolService() error { return enableBootUnit() }
+
+func enableBootUnit() error {
+	if err := os.WriteFile("/etc/systemd/system/truner-agent.service", []byte(bootUnit), 0o644); err != nil {
 		return err
 	}
 	exec.Command("systemctl", "daemon-reload").Run()
-	return a.sh(context.Background(), "systemctl", "enable", "truner-agent.service")
+	if out, err := exec.Command("systemctl", "enable", "truner-agent.service").CombinedOutput(); err != nil {
+		return fmt.Errorf("enable truner-agent.service: %v: %s", err, out)
+	}
+	return nil
 }
 
 func (a *Agent) osBasePath(extra []string) string {

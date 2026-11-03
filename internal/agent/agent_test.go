@@ -2,6 +2,7 @@ package agent
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -59,5 +60,26 @@ func TestBannerAndCacheSummary(t *testing.T) {
 	}
 	if s := cacheSummary(cacheproxy.Stats{Hits: 2, Misses: 1, BytesDown: 300 << 20, DownNanos: 1e9}); !strings.Contains(s, "2 hit(s)") || !strings.Contains(s, "300.0 MiB/s") {
 		t.Error(s)
+	}
+}
+
+func TestHDDInstanceType(t *testing.T) {
+	for typ, want := range map[string]bool{"d3en.xlarge": true, "d3.2xlarge": true, "d2.xlarge": true, "h1.4xlarge": true, "m7a.xlarge": false, "m6id.large": false, "r5d.8xlarge": false, "": false} {
+		if got := hddInstanceType(typ); got != want {
+			t.Errorf("%q: got %v", typ, got)
+		}
+	}
+}
+
+func TestPrefetch(t *testing.T) {
+	dir := t.TempDir()
+	for i, size := range []int{0, 10, 300 << 10} {
+		sub := filepath.Join(dir, "bin", fmt.Sprint(i))
+		os.MkdirAll(sub, 0o755)
+		os.WriteFile(filepath.Join(sub, "f"), make([]byte, size), 0o644)
+	}
+	files, bytes, _ := prefetch([]string{filepath.Join(dir, "bin"), filepath.Join(dir, "missing")}, 4)
+	if files != 3 || bytes != 10+300<<10 {
+		t.Fatalf("prefetch read %d files, %d bytes", files, bytes)
 	}
 }

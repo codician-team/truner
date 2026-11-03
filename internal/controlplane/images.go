@@ -30,6 +30,7 @@ type ResolvedImage struct {
 	Arch        string
 	Baked       bool
 	CreatedAt   time.Time
+	Version     string // truner version that baked it
 }
 
 type cachedImage struct {
@@ -161,6 +162,11 @@ func describeToResolved(i ec2types.Image, name string) *ResolvedImage {
 	}
 	if t, err := time.Parse(time.RFC3339, aws.ToString(i.CreationDate)); err == nil {
 		r.CreatedAt = t
+	}
+	for _, t := range i.Tags {
+		if aws.ToString(t.Key) == TagVersion {
+			r.Version = aws.ToString(t.Value)
+		}
 	}
 	if r.RootDevice == "" {
 		r.RootDevice = "/dev/sda1"
@@ -468,7 +474,9 @@ func (cp *ControlPlane) recordImageUse(ctx context.Context, name string, img con
 	cp.Store.PutItem(ctx, "imageuse#"+name+"#"+arch, Item{"coll": collImageUse, "ts": time.Now().Unix(), "image": name, "arch": arch, "spec": string(spec)}, 30*24*time.Hour, false)
 }
 
-// AutoBake rebuilds used images whose baked AMI is missing or stale.
+// AutoBake rebuilds used images whose baked AMI is missing, older than the
+// bake interval, or baked by another truner version (so an upgrade reaches
+// the agent and boot setup inside the image).
 func (cp *ControlPlane) AutoBake(ctx context.Context) error {
 	g := cp.GlobalConfig(ctx)
 	if !config.BoolOr(g.AutoBake, true) {
@@ -496,7 +504,7 @@ func (cp *ControlPlane) AutoBake(ctx context.Context) error {
 			cp.Log.Warn("autobake: list images failed", "err", err)
 			continue
 		}
-		if latest != nil && time.Since(latest.CreatedAt) < interval {
+		if latest != nil && time.Since(latest.CreatedAt) < interval && latest.Version == cp.Env.Version {
 			continue
 		}
 		if _, err := cp.EnsureBake(ctx, name, img, arch, false); err != nil {

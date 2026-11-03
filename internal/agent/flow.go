@@ -23,6 +23,7 @@ import (
 	"github.com/codician-team/truner/internal/cacheproxy"
 	"github.com/codician-team/truner/internal/cachestore"
 	"github.com/codician-team/truner/internal/github"
+	"github.com/codician-team/truner/internal/version"
 )
 
 func (a *Agent) user() string {
@@ -65,6 +66,9 @@ func (a *Agent) installProfileIfNeeded(ctx context.Context) error {
 
 // prepareMachine installs everything the runner needs.
 func (a *Agent) prepareMachine(ctx context.Context) error {
+	if a.Cfg.Mode == agentcfg.ModeRun {
+		a.warmRunner(a.osRunnerDir())
+	}
 	if err := a.timed("prepare", func() error { return a.osPrepare(ctx) }); err != nil {
 		a.warn("system preparation: " + err.Error())
 	}
@@ -215,8 +219,8 @@ func (a *Agent) preparePool(ctx context.Context) error {
 	return nil
 }
 
-// Boot is the entry point of pool machines on every start: it runs the job
-// that the control plane put into the user data when claiming the machine.
+// Boot is the entry point of the boot unit on warm pool machines and machines
+// from baked images: it runs the job in the instance's user data.
 func Boot(ctx context.Context, logPath string) int {
 	ud, err := UserData(ctx)
 	if err != nil {
@@ -228,13 +232,23 @@ func Boot(ctx context.Context, logPath string) int {
 		fmt.Fprintln(os.Stderr, "truner: parse user data:", err)
 		return 1
 	}
-	if cfg.Mode == agentcfg.ModePool {
-		if _, err := os.Stat(poolMarker()); err == nil {
-			// Started without being claimed: go back to sleep.
-			fmt.Fprintln(os.Stderr, "truner: pool machine started without a job, stopping")
-			powerOff()
-			return 0
-		}
+	_, err = os.Stat(poolMarker())
+	pooled := err == nil
+	if cfg.Mode == agentcfg.ModePool && pooled {
+		// Started without being claimed: go back to sleep.
+		fmt.Fprintln(os.Stderr, "truner: pool machine started without a job, stopping")
+		powerOff()
+		return 0
+	}
+	if cfg.Mode == agentcfg.ModeRun && !pooled && cfg.Version != "" && cfg.Version != version.Version {
+		// An image baked by an older truner: the user data script downloads the
+		// agent this job needs and starts it.
+		fmt.Fprintf(os.Stderr, "truner: this job needs agent %s, this image has %s; the user data script starts it\n", cfg.Version, version.Version)
+		return 0
+	}
+	if !Lock() {
+		fmt.Fprintln(os.Stderr, "truner: an agent is already running on this machine")
+		return 0
 	}
 	a, _ := New(cfg, logPath)
 	return a.Main(ctx)

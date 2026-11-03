@@ -51,6 +51,7 @@ func (a *Agent) osInstallSSHKeys(keys []string) error    { return errUnsupported
 func (a *Agent) osDockerConfigDir() string               { return filepath.Join(os.TempDir(), "truner", ".docker") }
 func (a *Agent) osBakeCleanup(ctx context.Context) error { return errUnsupported }
 func (a *Agent) osEnablePoolService() error              { return errUnsupported }
+func osLock() bool                                       { return true }
 func (a *Agent) osBasePath(extra []string) string        { return os.Getenv("PATH") }
 func (a *Agent) osToolCache() string                     { return filepath.Join(os.TempDir(), "truner", "toolcache") }
 func (a *Agent) osScratchDir() string                    { return filepath.Join(os.TempDir(), "truner") }

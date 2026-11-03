@@ -51,6 +51,11 @@ func main() {
 			fmt.Fprintln(os.Stderr, "truner-agent:", err)
 			os.Exit(1)
 		}
+		if !agent.Lock() {
+			// On baked images the boot unit started the agent before cloud-init got here.
+			fmt.Fprintln(os.Stderr, "truner-agent: an agent is already running on this machine")
+			os.Exit(0)
+		}
 		a, _ := agent.New(cfg, logPath())
 		a.NoShutdown = *noShutdown
 		os.Exit(a.Main(ctx))

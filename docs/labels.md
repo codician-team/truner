@@ -27,13 +27,16 @@ with an explanation.
 | `type` | `c7i.4xlarge+c6i.4xlarge` | – | Exact types (skips attribute-based selection) |
 | `arch` | `x64`, `arm64` | `x64` | `arm64` selects Graviton |
 | `gpu` | `1`, `4`, `true` | `0` | NVIDIA GPUs (use a GPU image, e.g. `runner=gpu-nvidia`) |
-| `nvme` | `true` | `false` | Require local NVMe instance storage. NVMe is used automatically whenever present |
+| `nvme` | `true` | `false` | Require local NVMe SSD instance storage. SSD instance storage is used automatically whenever present |
 | `spot` | `true`, `false`, `only` | `true` | `true`: spot with on-demand fallback. `only`: never on-demand |
 
 Without `family` or `type`, truner asks EC2 for **all current-generation instance
 types** matching `cpu`/`ram`/`arch`, excluding burstable (t-family), bare metal and
 accelerated types, and lets EC2 Fleet choose the best spot pool across all
-availability zones (`price-capacity-optimized`).
+availability zones (`price-capacity-optimized`). Families whose instance storage is
+hard disks (`d2`, `d3`, `d3en`, `h1`) are left out too: they are cheap on spot, but
+their disks take minutes to set up and build slower than EBS. Name the family to use
+one anyway.
 
 ## Image and disk
 

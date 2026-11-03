@@ -35,10 +35,17 @@ The first time a bakeable image is used in an architecture, truner:
 2. Starts a **builder** in the background that installs the profile, pre-downloads
    the runner, cleans up and stops. The janitor turns it into an AMI tagged for your
    installation.
-3. Uses that AMI for all later jobs (boot about 20–30 s).
+3. Uses that AMI for all later jobs.
 
-Images are rebuilt every `bakeIntervalDays` (default 7) while they are in use, and the
-newest two are kept. Manage them with:
+On machines from a baked image, the agent starts from its own systemd unit as soon as
+the network is up. It doesn't wait for cloud-init's later stages, which wait for snapd
+and take 5 to 20 seconds on a fresh volume. The user data script still runs
+afterwards. It finds the agent already running and does nothing, unless the image is
+older than your installation, in which case it downloads the matching agent and
+starts it.
+
+Images are rebuilt every `bakeIntervalDays` (default 7) while they are in use, after an
+upgrade to a new truner version, and on demand. The newest two are kept. Manage them with:
 
 ```bash
 truner images list

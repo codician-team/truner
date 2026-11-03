@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Faster job starts on baked images. The agent starts from its own systemd unit as soon
+  as the network is up instead of after cloud-init's later stages. It no longer walks the
+  whole runner directory before each job, and it reads the runner's files in parallel
+  while it prepares the machine. In-use images are rebuilt after an upgrade, so the
+  changes reach them.
+- Instance types with hard disk instance storage (`d2`, `d3`, `d3en`, `h1`) are no longer
+  chosen automatically. Their disks are never used for the work directory, which took
+  minutes to set up.
+
 ## v0.1.1
 
 - Magic cache: a key that is already stored or still uploading is now refused with twirp

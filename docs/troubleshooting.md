@@ -40,7 +40,18 @@ or a `.github/truner.yml` syntax error.
 - `ubuntu24-full` installs many tools when not baked yet. Build it ahead of time:
   `truner images build ubuntu24-full --arch all`.
 - For the fastest starts use a [warm pool](pools.md).
-- The "Boot" line of the job banner shows where the time went.
+- The "Boot" line of the job banner shows where the time went. `truner logs <job-id>`
+  adds the agent's steps and cloud-init's stage timings ("Up 24.5 seconds").
+- **A baked image's first reads are slow.** EBS restores the volume of a custom AMI
+  lazily: each block is fetched from S3 the first time it is read. That makes early boot
+  on a baked image take 15 to 20 seconds longer than on Ubuntu's own image, whose
+  blocks are already in use across EC2. truner works around most of it: the agent
+  starts at network-up, and it skips walking the runner's files and reads them in
+  parallel. Warm pools avoid it entirely, because a stopped machine keeps its volume.
+  The `disk-init` label speeds up the background copy of the whole volume, at extra
+  EBS cost.
+- Machines with hard disk instance storage (`d3en` and others) are not chosen unless
+  you name their family. They used to take minutes to set up their disks.
 
 ## Cache misses
 

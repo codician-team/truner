@@ -201,6 +201,12 @@ func buildOverrides(spec *config.JobSpec, subnets []string) []ec2types.FleetLaun
 	return out
 }
 
+// hddFamilies have hard disk instance storage. They are cheap on spot, but
+// their disks take minutes to set up and build slower than EBS, so they are
+// only used when a job names their family. (LocalStorageTypes=ssd would also
+// drop every type without instance storage.)
+var hddFamilies = []string{"d2.*", "d3.*", "d3en.*", "h1.*"}
+
 // InstanceRequirements maps a spec to EC2 attribute-based instance selection.
 func InstanceRequirements(spec *config.JobSpec) *ec2types.InstanceRequirementsRequest {
 	req := &ec2types.InstanceRequirementsRequest{
@@ -226,6 +232,7 @@ func InstanceRequirements(spec *config.JobSpec) *ec2types.InstanceRequirementsRe
 		req.BurstablePerformance = ec2types.BurstablePerformanceIncluded
 	} else {
 		req.BurstablePerformance = ec2types.BurstablePerformanceExcluded
+		req.ExcludedInstanceTypes = hddFamilies
 	}
 	if spec.NVMe {
 		req.LocalStorage = ec2types.LocalStorageRequired

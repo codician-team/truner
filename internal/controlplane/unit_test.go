@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 
 	"github.com/codician-team/truner/internal/agentcfg"
@@ -42,13 +43,16 @@ func TestInstanceRequirements(t *testing.T) {
 	if r.BurstablePerformance != ec2types.BurstablePerformanceExcluded || r.AcceleratorCount.Max == nil || *r.AcceleratorCount.Max != 0 {
 		t.Fatal("defaults must exclude burstable and accelerated types")
 	}
+	if strings.Join(r.ExcludedInstanceTypes, " ") != "d2.* d3.* d3en.* h1.*" || r.LocalStorage != ec2types.LocalStorageIncluded || r.LocalStorageTypes != nil {
+		t.Fatalf("defaults must exclude hard disk families but keep EBS-only types: %+v", r)
+	}
 	g := InstanceRequirements(spec(t, "truner/runner=gpu-nvidia"))
 	if *g.AcceleratorCount.Min != 1 || g.AcceleratorManufacturers[0] != ec2types.AcceleratorManufacturerNvidia {
 		t.Fatalf("gpu requirements wrong: %+v", g)
 	}
 	f := InstanceRequirements(spec(t, "truner/family=t3+m7a/nvme=true"))
-	if f.BurstablePerformance != ec2types.BurstablePerformanceIncluded || len(f.AllowedInstanceTypes) != 2 || f.LocalStorage != ec2types.LocalStorageRequired {
-		t.Fatalf("family/nvme wrong: %+v", f)
+	if f.BurstablePerformance != ec2types.BurstablePerformanceIncluded || len(f.AllowedInstanceTypes) != 2 || f.LocalStorage != ec2types.LocalStorageRequired || f.ExcludedInstanceTypes != nil {
+		t.Fatalf("family/nvme wrong (EC2 rejects allowed and excluded types together): %+v", f)
 	}
 }
 
@@ -111,5 +115,12 @@ func TestParseOnDemand(t *testing.T) {
 func TestRunnerFile(t *testing.T) {
 	if runnerFile("2.338.2", "linux", "arm64") != "actions-runner-linux-arm64-2.338.2.tar.gz" || runnerFile("2.338.2", "windows", "x64") != "actions-runner-win-x64-2.338.2.zip" {
 		t.Fatal("runner file names")
+	}
+}
+
+func TestBakedImageVersion(t *testing.T) {
+	r := describeToResolved(ec2types.Image{ImageId: aws.String("ami-1"), Tags: []ec2types.Tag{{Key: aws.String(TagVersion), Value: aws.String("v0.1.0")}}}, "ubuntu24")
+	if r.Version != "v0.1.0" {
+		t.Fatalf("version = %q", r.Version)
 	}
 }
