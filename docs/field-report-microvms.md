@@ -19,7 +19,8 @@ Astro check and a deploy job. All times are from us-east-1.
 | 5 | Jobs see a MicroVM's peak size, not its baseline | Document it, and what bursting costs |
 | 6 | Measured start and run times | Add them to the docs |
 | 7 | A job held by a concurrency group starts about 70 s after its release | Document it; truner does not launch early |
-| 8 | Smaller notes | `truner jobs` WAIT, a fixed hint, `libatomic1` |
+| 8 | Node 26 does not start on a MicroVM | Add `libatomic1` to the MicroVM image and document it |
+| 9 | Smaller notes | `truner jobs` WAIT, a fixed hint |
 
 ## 1. A silent downgrade, then a silent fallback to EC2
 
@@ -193,14 +194,40 @@ truner took 6 s. This is one sample; GitHub may not always take that long.
 - Document how such jobs behave: no machine until GitHub queues the job, and GitHub
   may queue it a minute after the release.
 - `truner jobs` WAIT counts from the job's `created_at` (`onQueued` in
-  `internal/controlplane/webhook.go`), so it includes the time GitHub held the job. The control plane knows when `queued` arrived; showing the time from
-  `queued` to the start apart from WAIT would separate truner's share from GitHub's.
+  `internal/controlplane/webhook.go`), so it includes the time GitHub held the job. The
+  control plane knows when `queued` arrived; showing the time from `queued` to the
+  start apart from WAIT would separate truner's share from GitHub's.
 
-## 8. Smaller notes
+## 8. Node 26 does not start on a MicroVM
+
+**What happened.** On 2026-11-03 the repository moved from Node 24 to Node 26, because
+Node 24 has a V8 Maglev deoptimization bug that is fixed only in Node 26.12 and later.
+On MicroVMs, the `node` binary then exited with status 127 before `actions/setup-node`
+could run it: Node's official Arm64 Linux build links `libatomic.so.1`, and the MicroVM
+image does not have it. The workaround is a setup step that installs the library when
+it is missing:
+
+```yaml
+- run: |
+    if ! ldconfig -p | grep -q libatomic.so.1; then
+      apt-get update && apt-get install -y libatomic1
+    fi
+```
+
+It costs each MicroVM job about 10 s, most of it `apt-get update`. EC2 Graviton machines
+were not checked.
+
+**Mechanism.** `microDockerfile` (`internal/controlplane/micro.go`) installs a fixed
+package list with `--no-install-recommends`, and `libatomic1` is not in it. The base
+image is `public.ecr.aws/ubuntu/ubuntu:24.04`, which does not have it either.
+
+**Suggestion.** Add `libatomic1` to the MicroVM image's package list, check the Arm64
+AMI (the `standard` profile) for it too, and list it under
+[What a MicroVM has](microvms.md#what-a-microvm-has). Node is the most common runtime
+on these machines, so other common runtime libraries may be worth a look at the same
+time.
+
+## 9. Smaller notes
 
 - `truner jobs` WAIT matches GitHub's `created_at` to `started_at` for the job.
 - The v0.1.1 CLI's "No jobs yet" hint printed the wrong label prefix. Fixed in v0.1.4.
-- Node 26's linux-arm64 binary needs `libatomic1`, which the MicroVM image does not
-  install (the `apt-get install` line in `internal/controlplane/micro.go`). On a
-  MicroVM, `node` exited with status 127 until a workflow step installed it, which costs
-  about 10 s per job. Adding `libatomic1` to the image would remove that step.
