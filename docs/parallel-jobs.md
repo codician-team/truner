@@ -76,7 +76,8 @@ since the snapshot, which a job on the default branch saves. To keep the checkou
 
 - Keep the default `fetch-depth: 1`. A full-history checkout does not use the snapshot.
 - Check out only what a job needs: `sparse-checkout:` or `filter: blob:none` on
-  `actions/checkout`.
+  `actions/checkout`. A filtered checkout never saves a snapshot, so leave at least one
+  job on the default branch unfiltered.
 - Keep large binary files out of the repository, or in Git LFS and fetched only by the
   jobs that use them.
 - Count the checkout when you decide how far to split: a job that runs for 20 seconds

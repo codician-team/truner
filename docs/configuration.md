@@ -12,11 +12,13 @@ locally with `truner config validate FILE` (add `--repo` for repository files).
 
 A broken account config never stops jobs: the last valid version stays in use and
 `truner doctor` reports the error. A broken repository config fails that repository's
-jobs with the parse error shown in the job log.
+jobs with the parse error shown in the job log. Changes to the account config apply to
+new jobs within a minute.
 
 ## Repository config: `.github/truner.yml`
 
 The file is read from the commit being built, so changes can be tested in a pull request.
+`.github/truner.yaml` works too.
 
 ```yaml
 # Settings for every job of this repository that runs on truner.
@@ -42,7 +44,7 @@ runners:
     nvme: true
     timeout: 90
 
-# Custom images for this repository: runs-on: truner/runner=...,image=<name>
+# Custom images for this repository: runs-on: truner/image=<name>
 images:
   golden:
     name: "my-golden-ubuntu-*"   # newest AMI matching this name
@@ -73,8 +75,8 @@ images:              # shared custom images
 pools:               # warm machines: runs-on: truner/pool=<name>
   fast:
     runner: 4cpu-linux-x64
-    size: 3
-    maxAgeHours: 72
+    size: 3            # machines kept ready, 0–100
+    maxAgeHours: 72    # recycle machines older than this (default 168, a week)
 
 access:              # which repositories may use truner (glob patterns)
   repos: ["my-org/*"]
@@ -91,27 +93,32 @@ retryOnInterruption: true  # re-run jobs killed by spot interruptions (default t
 
 ## Runner spec keys
 
-Profiles (`runners:`), `defaults:` and pool definitions all accept these keys:
+Profiles (`runners:`), `defaults:` and pool definitions all accept these keys. The
+limits are the same as for [labels](labels.md).
 
 | Key | Type | Example |
 |---|---|---|
 | `extends` | profile name | `16cpu-linux-x64` |
-| `cpu` | number, `"min-max"`, `[min, max]`, `"min+"` | `8`, `"4-16"` |
-| `ram` | same (GiB) | `32` |
+| `cpu` | number, `"min-max"`, `[min, max]`, `"min+"` (1–896) | `8`, `"4-16"` |
+| `ram` | same (GiB). A single number is a minimum | `32` |
 | `family` | list or `a+b` | `[c7a, m7a]` |
 | `type` | list | `[c7i.4xlarge]` |
 | `arch` | `x64`/`arm64` | `arm64` |
-| `gpu` | number | `1` |
+| `gpu` | number (0–16) | `1` |
 | `nvme` | bool | `true` |
 | `micro` | bool: run on a Lambda [MicroVM](microvms.md) | `true` |
 | `image` | image name | `ubuntu24-full` |
 | `spot` | `true`/`false`/`only` | `only` |
-| `disk`, `diskIops`, `diskThroughput`, `diskInitRate` | numbers | `200` |
+| `disk` (8–16384), `diskIops` (3000–80000), `diskThroughput` (125–2000), `diskInitRate` (100–300) | numbers | `200` |
 | `private`, `ssh` | bool | `true` |
 | `cache` | `s3`/`github`/`off` | `s3` |
-| `timeout`, `idleTimeout`, `keep` | minutes | `90` |
+| `timeout` (up to 7200), `idleTimeout` (up to 1440), `keep` (up to 720) | minutes | `90` |
 | `env` | map | `{ JAVA_OPTS: -Xmx8g }` |
-| `tags` | map: extra EC2 tags (e.g. for cost allocation) | `{ team: payments }` |
+| `tags` | map: extra EC2 tags (e.g. for cost allocation). Keys starting with `aws:` or `truner:` are ignored | `{ team: payments }` |
+
+Pools also take `runner` (the profile to start from), `size` (0–100) and `maxAgeHours`
+(default 168). Pool machines are always on-demand. Profile, image and pool names may
+use letters, digits, `-`, `_` and `.`, up to 64 characters.
 
 ## Image spec keys
 

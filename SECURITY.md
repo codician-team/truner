@@ -18,12 +18,14 @@ the job's repository, so a machine can only ever take a job of that repository.
 
 **What a job can access.** Like any self-hosted runner, a job has root on its machine
 (via passwordless sudo) and therefore also:
-- the machine's IAM role: read/write to the installation's cache prefixes in S3, push to
+- the machine's IAM role: read/write to the installation's cache prefixes in S3, upload
+  machine and image build logs, pull from every ECR repository in the account, push to
   the ECR cache repository, SSM core, plus any policies you attach with `--runner-policy`;
 - the instance metadata, including the machine's (already consumed) user data.
 
 A job on a MicroVM has root inside it too and gets the MicroVM execution role instead:
-the same cache prefixes and `--runner-policy` policies, no ECR or SSM. It can reach the
+the same cache prefixes, log upload and `--runner-policy` policies, plus the
+installation's MicroVM log group, but no ECR or SSM. It can reach the
 agent's lifecycle hook port, which accepts the job's configuration only once.
 
 **Trust boundary.** All repositories that use one installation share the cache bucket

@@ -11,8 +11,8 @@ pools:
   fast:
     runner: 4cpu-linux-x64   # any profile, plus overrides:
     disk: 60
-    size: 3                  # machines kept ready
-    maxAgeHours: 72          # recycle machines older than this
+    size: 3                  # machines kept ready (0–100)
+    maxAgeHours: 72          # recycle machines older than this (default 168, a week)
 ```
 
 ```yaml
@@ -27,7 +27,7 @@ runs-on: truner/pool=fast/run=${{ github.run_id }}-test
   never waits for the pool.
 - Changing a pool's definition or upgrading truner recycles its machines.
 - Pool machines are on-demand, because stopped spot instances are not supported.
-  Only Linux images can be pooled.
+  Only Linux images can be pooled, and `micro` jobs cannot use a pool.
 - `keep`, `ssh`, `timeout` and `cache` labels still apply. Hardware labels are ignored.
 
 `truner pools` shows each pool's ready, preparing and in-use machines.

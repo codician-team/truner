@@ -39,11 +39,12 @@ does not fit a machine-per-job model.
 
 ### How fast does a job start?
 
-Most of the time goes to EC2 booting the machine. Typically:
+Most of the time goes to EC2 booting the machine. Measured from queued to the first
+step running, in us-east-1:
 
-- **Baked image:** about 25–45 seconds from queued to running.
+- **Baked image:** about 45–65 seconds, sometimes up to 90.
 - **Warm pool:** about 10–20 seconds.
-- **MicroVM (beta, `micro` label):** about 6–10 seconds, since the MicroVM resumes from
+- **MicroVM (beta, `micro` label):** about 6–20 seconds, since the MicroVM resumes from
   a snapshot with the runner in memory instead of booting. For short jobs without Docker;
   see [MicroVMs](microvms.md).
 - **First use of an image:** longer, because the software is installed at boot while the
@@ -55,8 +56,8 @@ The first line of every job log shows how long the machine took to become ready.
 ### What happens on a spot interruption?
 
 If it happens before the job starts, truner launches an on-demand machine instead. If it
-happens during the job, GitHub marks the job as failed and truner re-runs it on
-on-demand capacity once the workflow run finishes. You can turn that off with
+happens during the job and the job fails, truner re-runs it on on-demand capacity once
+the workflow run finishes, up to the run's third attempt. You can turn that off with
 `retryOnInterruption: false` in the account config.
 
 ### Do `container:` jobs and service containers work?
@@ -120,12 +121,14 @@ runners.
 ### How do I upgrade?
 
 Run `truner upgrade`. It updates the CLI to the latest release first, then the
-installation. Machines that are running finish their jobs, and new jobs use the new
-version. With a CLI older than v0.1.5, install the latest CLI first
-(see [getting started](getting-started.md)).
+installation, and says which versions it upgrades from and to. Machines that are running
+finish their jobs, and new jobs use the new version. Baked images in use are rebuilt for
+the new version within the hour, and MicroVM images with the first micro job of each
+size. With a CLI older than v0.1.5, install
+the latest CLI first (see [getting started](getting-started.md)).
 
 ### How do I remove it?
 
-`truner uninstall` terminates every machine and deletes the baked images, the data
-bucket and the stack. After that, delete the GitHub App in your GitHub settings, because
+`truner uninstall` terminates every machine and deletes the baked and MicroVM images,
+the data bucket and the stack. After that, delete the GitHub App in your GitHub settings, because
 GitHub has no API for removing apps.

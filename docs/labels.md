@@ -9,8 +9,10 @@ runs-on: truner=${{ github.run_id }}-test/cpu=8/ram=32       # first value is th
 runs-on: [truner, cpu=8, ram=32, "run=${{ github.run_id }}-test"]
 ```
 
-Unknown keys are ignored with a warning in the job log. Invalid values fail the job
-with an explanation.
+Keys are case-insensitive. A switch on its own means `=true`, so `truner/micro` is
+`truner/micro=true`. That works for `micro`, `spot`, `nvme`, `private`, `ssh` and
+`cache`. Other bare words, such as `self-hosted` or `linux`, are ignored. Unknown keys are
+ignored with a warning in the job log. Invalid values fail the job with an explanation.
 
 ::: warning Use your installation's prefix
 `truner` is the default prefix. An installation made with `--label-prefix` (or one of
@@ -62,16 +64,18 @@ a job that still waits.
 
 | Key | Values | Default | Notes |
 |---|---|---|---|
-| `runner` | profile name | – | Built-in or from config. Labels after it override it. Aliases: `profile` |
-| `cpu` | `4`, `4-16`, `8+` | `2` | vCPUs: exact, inclusive range, or minimum |
+| `runner` | profile name | – | Built-in or from config. Labels after it override it. Alias: `profile` |
+| `cpu` | `4`, `4-16`, `8+` | `2` | vCPUs: exact, inclusive range, or minimum (1–896). Aliases: `cpus`, `vcpu`, `vcpus` |
 | `ram` | `16`, `16-64` | `cpu × 4` | GiB. A single number is a minimum. Aliases: `memory`, `mem` |
-| `family` | `c7a+m7a`, `c8g`, `m7i.*` | any current generation | Instance families. With a family, `ram` defaults to "any" |
-| `type` | `c7i.4xlarge+c6i.4xlarge` | – | Exact types (skips attribute-based selection) |
-| `arch` | `x64`, `arm64` | `x64` | `arm64` selects Graviton |
-| `gpu` | `1`, `4`, `true` | `0` | NVIDIA GPUs (use a GPU image, e.g. `runner=gpu-nvidia`) |
+| `family` | `c7a+m7a`, `c8g`, `m7i.*` | any current generation | Instance families. With a family, `ram` defaults to "any". Alias: `families` |
+| `type` | `c7i.4xlarge+c6i.4xlarge` | – | Exact types (skips attribute-based selection). Aliases: `types`, `instance-type` |
+| `arch` | `x64`, `arm64` | `x64` | `arm64` selects Graviton. Also accepts `amd64`, `x86_64`, `aarch64`, `graviton`. Alias: `architecture` |
+| `gpu` | `1`, `4`, `true` | `0` | NVIDIA GPUs, up to 16 (use a GPU image, e.g. `runner=gpu-nvidia`). Alias: `gpus` |
 | `nvme` | `true` | `false` | Require local NVMe SSD instance storage. SSD instance storage is used automatically whenever present |
-| `spot` | `true`, `false`, `only` | `true` | `true`: spot with on-demand fallback. `only`: never on-demand |
+| `spot` | `true`, `false`, `only` | `true` | `true`: spot with on-demand fallback. `false` (or `on-demand`): on-demand only. `only`: never on-demand |
 | `micro` | `true` | `false` | Run on a Lambda MicroVM (1, 2 or 4 vCPU, Arm64, no Docker) instead of EC2. See [MicroVMs](microvms.md). Alias: `microvm` |
+
+`family` and `type` take lists separated by `+` or `,`.
 
 Without `family` or `type`, truner asks EC2 for **all current-generation instance
 types** matching `cpu`/`ram`/`arch`, excluding burstable (t-family), bare metal and
@@ -96,24 +100,27 @@ still has spot pools to choose from. See
 
 | Key | Values | Default | Notes |
 |---|---|---|---|
-| `image` | `ubuntu24`, `ubuntu22`, `ubuntu24-full`, `ubuntu24-gpu`, `windows2025`, `windows2022`, custom name, `ami-…` | `ubuntu24` | Append `-arm64`/`-x64` to pick the architecture. See [images](images.md) |
-| `disk` | GiB | `40` (Windows `50`+) | gp3 root volume |
-| `disk-iops` | 3000–80000 | 3000 | gp3 provisioned IOPS |
-| `disk-throughput` | 125–2000 | 125 | gp3 MiB/s |
+| `image` | `ubuntu24`, `ubuntu22`, `ubuntu24-full`, `ubuntu24-gpu`, `windows2025`, `windows2022`, custom name, `ami-…` | `ubuntu24` | Append `-arm64`/`-x64` to pick the architecture. See [images](images.md). Alias: `ami` |
+| `disk` | GiB, 8–16384 | `40` (Windows `50`+) | gp3 root volume. Aliases: `disk-size`, `volume` |
+| `disk-iops` | 3000–80000 | 3000 | gp3 provisioned IOPS. Alias: `iops` |
+| `disk-throughput` | 125–2000 | 125 | gp3 MiB/s. Alias: `throughput` |
 | `disk-init` | 100–300 | – | EBS provisioned volume initialization rate (MiB/s), speeds up first reads of a fresh volume |
 
 ## Behavior
 
 | Key | Values | Default | Notes |
 |---|---|---|---|
-| `cache` | `s3`, `github`, `off` | `s3` | Magic cache backend. See [caching](caching.md) |
-| `private` | `true` | `false` | Use private subnets (static egress IP with `--nat`) |
+| `cache` | `s3`, `github`, `off` | `s3` | Magic cache backend, and [repository snapshots](caching.md#repository-snapshots) with `s3`. Also accepts `true`/`magic`, `gh`/`native` and `false`/`none`. See [caching](caching.md) |
+| `private` | `true` | `false` | Use private subnets (static egress IP with `--nat`). Alias: `static-ip` |
 | `ssh` | `true` | `false` | Install the triggering user's GitHub SSH keys (needs `--ssh-cidr`) |
-| `keep` | `30`, `30m`, `2h`, `true` | `0` | Keep the machine after the job for debugging (`true` = 30 min) |
-| `timeout` | `90`, `3h` | `720` (12 h) | Hard limit on the machine's lifetime |
-| `idle-timeout` | minutes | `15` | Shut down if no job is picked up in this time |
+| `keep` | `30`, `30m`, `2h`, `true` | `0` | Keep the machine after the job for debugging (`true` = 30 min, at most 12 h). Alias: `debug` |
+| `timeout` | `90`, `3h` | `720` (12 h) | Hard limit on the machine's lifetime, at most 7200 minutes (5 days). MicroVMs: at most 480 |
+| `idle-timeout` | minutes | `15` | Shut down if no job is picked up in this time (at most 1440) |
 | `pool` | pool name | – | Start a pre-warmed machine. Hardware labels are ignored, since the pool defines them |
-| `run` | anything | – | Uniqueness token, ignored. One per job: `run=${{ github.run_id }}-<job>` ([why](#one-run-token-per-job)) |
+| `run` | anything | – | Uniqueness token, ignored. One per job: `run=${{ github.run_id }}-<job>` ([why](#one-run-token-per-job)). Aliases: `run-id`, `id` |
+
+Durations (`keep`, `timeout`, `idle-timeout`) are minutes, or Go durations such as `90m`
+or `1h30m`.
 
 ## Built-in runner profiles
 
@@ -142,7 +149,8 @@ Jobs see these variables, in addition to GitHub's:
 | Variable | Example |
 |---|---|
 | `TRUNER` | `true` |
-| `TRUNER_INSTANCE_TYPE`, `TRUNER_INSTANCE_ID`, `TRUNER_INSTANCE_LIFECYCLE`, `TRUNER_AZ` | `c7a.xlarge`, `i-0abc…`, `spot`, `us-east-1b` |
+| `TRUNER_STACK` | the installation's name, for example `truner` |
+| `TRUNER_INSTANCE_TYPE`, `TRUNER_INSTANCE_ID`, `TRUNER_INSTANCE_LIFECYCLE`, `TRUNER_AZ` | `c7a.xlarge`, `i-0abc…`, `spot`, `us-east-1b`. On a MicroVM: `microvm`, the MicroVM's id, `microvm` and no zone |
 | `TRUNER_S3_BUCKET`, `TRUNER_S3_DOCKER_PREFIX` | for `buildx type=s3` caches |
 | `TRUNER_ECR_CACHE` | ECR repository for registry caches |
 | `TRUNER_NVME` | mount point of local NVMe (if any) |

@@ -10,7 +10,7 @@ fee or subscription.
 | **Control plane** | Effectively $0 while idle. Lambda, SQS, DynamoDB (on-demand), API Gateway and S3 cost cents to low dollars per month, even at 1,000 jobs per day. The scheduled janitor is the largest fixed item, at about $0.10 per month. |
 | **Job machines** | The EC2 price for the seconds a machine runs (60 s minimum), plus its EBS volume. Spot is usually far below on-demand. |
 | **Baked images** | AMI snapshots, roughly $0.50–$2 per image per month. truner keeps the newest two of each. |
-| **Cache** | S3 storage for what you cache. Entries expire after 10 days by default (`--cache-days`). |
+| **Cache** | S3 storage for what you cache, including [repository snapshots](caching.md#repository-snapshots). Entries expire after 10 days by default (`--cache-days`). |
 | **Warm pools** | Each ready machine's stopped EBS volume, for example 40 GiB gp3 ≈ $3.20 per month. |
 | **MicroVMs** (micro jobs) | Lambda's per-second price, about $0.126 per vCPU-hour including its memory, plus up to $0.0016 per GiB of memory to read the snapshot at each start. More than EC2 per job; see [MicroVMs](microvms.md#costs). |
 | **NAT gateway** (optional) | About $32 per month plus $0.045 per GB, only with `--nat` for a static egress IP. |
@@ -50,14 +50,19 @@ limits:
 ```
 
 - **`maxInstances`**: jobs wait in the queue while this many machines are running.
-- **`monthlyBudgetUsd`**: once the month's estimated spend reaches the budget, new jobs
-  wait in the queue and an alert is sent. Running jobs are not interrupted.
+  MicroVMs count as machines.
+- **`monthlyBudgetUsd`**: an alert is sent at 80% of the budget. Once the month's
+  estimated spend reaches it, another alert is sent and new jobs wait in the queue until
+  you raise the budget or the month ends (UTC). Running jobs are not interrupted.
+
+Jobs that wait for a limit retry on their own, every 30 seconds for `maxInstances` and
+every 10 minutes for the budget.
 
 Each machine also has limits of its own:
 
 | Label | Default | Meaning |
 |---|---|---|
-| `timeout` | 12 h | hard limit on the machine's lifetime |
+| `timeout` | 12 h | hard limit on the machine's lifetime (MicroVMs: at most 8 h) |
 | `idle-timeout` | 15 min | shut down if no job is picked up in this time |
 
 ## Alerts and reports
@@ -66,9 +71,11 @@ Each machine also has limits of its own:
 truner install --alert-email ops@example.com --daily-report
 ```
 
-The address receives budget alerts, quota exhaustion alerts (at most hourly) and
-dead-letter queue alarms. With `--daily-report` it also gets a daily summary of jobs and
-spend. AWS sends a confirmation email for the subscription first, so click the link in it.
+The address receives budget alerts (at 80% and 100%), quota exhaustion alerts (at most
+hourly), an alert for each job that could not get a machine after all retries, failed
+image builds and dead-letter queue alarms. With `--daily-report` it also gets a summary
+of the previous day's jobs and spend after 01:00 UTC, on days with jobs. AWS sends a
+confirmation email for the subscription first, so click the link in it.
 
 ## Keeping costs down
 
