@@ -4,8 +4,22 @@ import (
 	"fmt"
 	"runtime"
 
+	"github.com/codician-team/truner/internal/labels"
 	"github.com/codician-team/truner/internal/version"
 )
+
+// labelPrefix is the first runs-on label this installation answers to. Every
+// example label the CLI prints starts with it: a job written for another
+// prefix waits for a machine that never comes.
+func (e *env) labelPrefix() string {
+	return firstNonEmpty(e.stack.Parameters["LabelPrefix"], labels.DefaultPrefix)
+}
+
+// exampleLabel is a runs-on label for a job named job, with a run= token of
+// its own so that no other job takes its machine.
+func exampleLabel(prefix, settings, job string) string {
+	return fmt.Sprintf("%s/%s/run=${{ github.run_id }}-%s", prefix, settings, job)
+}
 
 // cliSkew compares this CLI with the installation's version. older is true
 // when the CLI is older and may not know the installation's labels, images

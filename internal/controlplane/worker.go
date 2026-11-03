@@ -56,6 +56,10 @@ func (cp *ControlPlane) ProcessJob(ctx context.Context, jobID int64) error {
 		return nil // another worker is on it
 	}
 	if job.Status != StatusQueued && job.Status != StatusLaunching {
+		if job.InstanceID == "" && (job.Status == StatusRunning || job.Status == StatusCompleted) {
+			// It started before its (deferred) launch: on another job's machine.
+			cp.warnMachineTaken(job.JobID, job.FullName(), job.RanOn)
+		}
 		return nil // already launched, started, cancelled...
 	}
 	err = cp.Store.UpdateJob(ctx, jobID, map[string]any{"status": StatusLaunching}, StatusIn(job.Status))

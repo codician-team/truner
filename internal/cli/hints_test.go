@@ -28,3 +28,9 @@ func TestCLISkew(t *testing.T) {
 		t.Errorf("development CLIs are not compared: %q", msg)
 	}
 }
+
+func TestExampleLabel(t *testing.T) {
+	if got := exampleLabel("truner-codician", "micro/cpu=4", "typecheck"); got != "truner-codician/micro/cpu=4/run=${{ github.run_id }}-typecheck" {
+		t.Errorf("got %q", got)
+	}
+}

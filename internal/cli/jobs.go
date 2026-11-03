@@ -96,7 +96,7 @@ func (a *app) jobsCmd() *cobra.Command {
 					fmt.Fprint(a.ui.out, "\x1b[H\x1b[2J")
 				}
 				if len(rows) == 0 {
-					a.ui.println("No jobs yet. Use `runs-on: truner/cpu=2/run=${{ github.run_id }}` in a workflow.")
+					a.ui.printf("No jobs yet. Use `runs-on: %s` in a workflow, with each job's own name in its run= token.\n", exampleLabel(e.labelPrefix(), "cpu=2", "build"))
 				} else {
 					a.ui.table([]string{"QUEUED", "REPOSITORY", "WORKFLOW / JOB", "STATUS", "MACHINE", "WAIT", "DURATION", "COST", "JOB ID"}, rows)
 				}

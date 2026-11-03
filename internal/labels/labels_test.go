@@ -46,6 +46,31 @@ func TestCustomPrefix(t *testing.T) {
 	}
 }
 
+func TestForeignPrefix(t *testing.T) {
+	cases := []struct {
+		prefix      string
+		raw         []string
+		label, want string
+	}{
+		// bake3d, 2026-11-03: the org's installation has the prefix truner-codician.
+		{"truner-codician", []string{"truner/cpu=8/run=41"}, "truner/cpu=8/run=41", "truner"},
+		{"truner-codician", []string{"truner-codician/cpu=8/run=41"}, "", ""},
+		{"truner", []string{"truner-codician/micro/run=41"}, "truner-codician/micro/run=41", "truner-codician"},
+		{"truner", []string{"self-hosted", "truner-gpu", "cpu=4"}, "truner-gpu", "truner-gpu"},
+		{"ci", []string{"truner=41/cpu=2"}, "truner=41/cpu=2", "truner"},
+		{"ci", []string{"CI/cpu=2"}, "CI/cpu=2", "CI"},
+		{"truner", []string{"truner/cpu=2"}, "", ""},
+		{"truner", []string{"ubuntu-latest"}, "", ""},
+		{"truner", []string{"trunerx/cpu=4"}, "", ""},
+		{"ci", []string{"ci-gpu/cpu=4"}, "", ""},
+	}
+	for _, c := range cases {
+		if label, got := ForeignPrefix(c.prefix, c.raw); label != c.label || got != c.want {
+			t.Errorf("ForeignPrefix(%q, %v) = %q, %q, want %q, %q", c.prefix, c.raw, label, got, c.label, c.want)
+		}
+	}
+}
+
 func TestSplitList(t *testing.T) {
 	if got := SplitList("c7a+m7a, r7a"); !reflect.DeepEqual(got, []string{"c7a", "m7a", "r7a"}) {
 		t.Fatalf("got %v", got)

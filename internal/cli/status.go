@@ -58,6 +58,7 @@ func (a *app) statusCmd() *cobra.Command {
 				u.printf("GitHub App   %s\n", u.yellow(err.Error()))
 			}
 			u.printf("Webhook URL  %s\n", e.out("WebhookUrl"))
+			u.printf("Labels       runs-on: %s\n", exampleLabel(e.labelPrefix(), "cpu=4", "<job>"))
 			if ip := e.out("StaticEgressIp"); ip != "" {
 				u.printf("Egress IP    %s %s\n", ip, u.dim("(private=true jobs)"))
 			}
@@ -269,6 +270,9 @@ func (a *app) doctor(ctx context.Context) error {
 		}
 	}
 	checkDeliveries(ctx, u, gh, &problems)
+
+	u.println(u.bold("\nJobs"))
+	checkWaitingJobs(ctx, u, e, gh, append(jobs, yesterday...), &problems)
 	return summary(u, problems)
 }
 

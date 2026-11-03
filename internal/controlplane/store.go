@@ -31,6 +31,9 @@ const (
 	collBakes    = "bakes"
 	collReruns   = "reruns"
 	collImageUse = "imageuse"
+	// CollForeignPrefix holds jobs whose labels look like truner's but carry
+	// another label prefix, for `truner doctor`.
+	CollForeignPrefix = "foreignprefix"
 )
 
 // ErrConditionFailed is returned when a conditional write did not apply.
