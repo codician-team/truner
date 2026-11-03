@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **Repository snapshots for `actions/checkout`.** Every machine fetched the whole
+  repository from GitHub, which took 11–102 seconds for a 237 MB repository on EC2
+  ([#4](https://github.com/codician-team/truner/issues/4)). After a job on the default
+  branch, the agent now saves the checked-out commit's git objects to the magic cache.
+  A `git` wrapper on the runner's `PATH` restores them before checkout's shallow fetch
+  into a new repository, which then transfers only newer objects. With a snapshot 60
+  commits behind, the fetch of `vitejs/vite` received 203 KiB instead of 12.3 MiB.
+  Snapshots are scoped by branch like cache entries and need no token. They work on
+  Linux machines and MicroVMs, and `cache=off` turns them off.
 - **Jobs with another installation's label prefix are reported.** A job labelled
   `truner/…` on an installation whose prefix is `truner-acme` waited for hours with no
   machine, while `truner doctor` said everything was fine and the control plane logged

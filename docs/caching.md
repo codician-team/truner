@@ -44,12 +44,38 @@ Downloads use parallel ranged reads (8 × 16 MiB in flight) and typically reach
 hundreds of MB/s on mid-size instances: a 234 MB npm cache restores in about a second
 (289–337 MiB/s on 4- and 8-vCPU EC2 machines and 4-vCPU MicroVMs).
 
-**What it does not cover.** `actions/checkout` fetches the repository from GitHub on
-every machine, past the cache. For a 237 MB repository that took 11–102 seconds on EC2
-and about 17 on MicroVMs. See
-[Splitting CI into parallel jobs](parallel-jobs.md#what-a-job-costs-before-its-first-step).
-
 Opt out per job with `cache=github` (GitHub's service) or `cache=off`.
+
+## Repository snapshots
+
+Every machine is new, so `actions/checkout` fetches the repository from GitHub in every
+job. For a 237 MB repository that took 11–102 seconds on EC2 and about 17 on MicroVMs
+([parallel jobs](parallel-jobs.md#what-a-job-costs-before-its-first-step)). truner keeps
+a snapshot of the repository in the magic cache, so the checkout fetches only what
+changed since. Nothing changes in your workflows, and no token other than the job's own
+is involved:
+
+- **Saving.** After a job on the default branch, the agent saves the checked-out commit's
+  git objects, without history, to `cache/<owner>/<repo>/` when the snapshot is missing
+  or older than 6 hours.
+- **Restoring.** A `git` wrapper comes first on the runner's `PATH` and runs the real git.
+  When `actions/checkout` starts its shallow fetch (`fetch-depth: 1`, the default, or
+  any depth) in the new repository, the wrapper first has the agent restore the newest
+  snapshot from S3. The fetch then transfers only newer objects, and the checkout step
+  logs `truner: restored <repo> at <commit> from S3 (…)`.
+- **Scopes** are the cache's: a job uses the snapshot of its own ref, of the pull
+  request's base branch or of the default branch. It saves only to its own ref, and a
+  pull request or another branch saves one only when there is none to use.
+
+With a snapshot 60 commits behind, the fetch of `vitejs/vite` from github.com received
+203 KiB instead of 12.3 MiB.
+
+Snapshots work on Linux machines and MicroVMs with the magic cache on, for checkouts
+into the workspace or a `path:`, and for any shallow fetch into a new clone of the job's
+repository. Full-history checkouts (`fetch-depth: 0`), Windows and container jobs fetch
+everything from GitHub as before. Snapshots appear in `truner cache ls` with the key
+`truner-repository-snapshot` and expire with the other cache entries. `cache=github` or
+`cache=off` turns them off.
 
 ## Docker layer caching
 

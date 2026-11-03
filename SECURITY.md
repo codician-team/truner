@@ -28,7 +28,8 @@ agent's lifecycle hook port, which accepts the job's configuration only once.
 
 **Trust boundary.** All repositories that use one installation share the cache bucket
 and the machine role. A job of repository A could read or overwrite cache entries of
-repository B. Therefore:
+repository B. That includes the repository snapshots that `actions/checkout` starts
+from, and git trusts the objects it restores from them. Therefore:
 
 - Use **separate installations** (`truner install --stack <name> --label-prefix <prefix>`)
   for groups of repositories with different trust levels.
