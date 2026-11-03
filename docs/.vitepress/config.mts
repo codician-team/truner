@@ -65,6 +65,7 @@ const sidebar: DefaultTheme.SidebarItem[] = [
     items: [
       { text: 'Architecture', link: '/architecture' },
       { text: 'Publishing (maintainers)', link: '/publishing' },
+      { text: 'Field report: MicroVMs', link: '/field-report-microvms' },
     ],
   },
 ]
@@ -88,6 +89,7 @@ const descriptions: Record<string, string> = {
   '/security': 'The security model and how to report vulnerabilities.',
   '/architecture': 'How the control plane, agent and CLI work, the job lifecycle and failure handling.',
   '/publishing': 'Releasing truner and publishing it under another GitHub owner.',
+  '/field-report-microvms': 'What moving a TypeScript monorepo\'s CI onto MicroVMs with v0.1.3 to v0.1.5 found: silent fallbacks, upgrade rebuilds, repository snapshots, sizing and measured start times.',
 }
 
 // Markdown source of a page as an agent should read it: includes resolved,
