@@ -19,7 +19,6 @@ import (
 	"github.com/codician-team/truner/internal/config"
 	"github.com/codician-team/truner/internal/controlplane"
 	"github.com/codician-team/truner/internal/github"
-	"github.com/codician-team/truner/internal/version"
 )
 
 func (a *app) statusCmd() *cobra.Command {
@@ -123,8 +122,9 @@ func (a *app) statusCmd() *cobra.Command {
 				u.printf("Images       %s\n", strings.Join(parts, ", "))
 			}
 			u.printf("Dashboard    %s\n", u.dim(e.out("DashboardUrl")))
-			if v := e.out("Version"); v != version.Version && !version.IsDev() {
-				u.printf("\n%s installation runs %s, this CLI is %s: run `truner upgrade`\n", u.yellow("!"), v, version.Version)
+			// connect already warned about an older CLI.
+			if older, msg := cliSkew(e.out("Version")); msg != "" && !older {
+				u.printf("\n%s %s\n", u.yellow("!"), msg)
 			}
 			return nil
 		},
@@ -160,8 +160,8 @@ func (a *app) doctor(ctx context.Context) error {
 	default:
 		bad("stack %s is %s: %s", e.name, e.stack.Status, e.stack.Reason)
 	}
-	if v := e.out("Version"); v != version.Version && !version.IsDev() {
-		u.warn("installation runs %s but this CLI is %s - run `truner upgrade`", v, version.Version)
+	if older, msg := cliSkew(e.out("Version")); msg != "" && !older {
+		u.warn("%s", msg)
 	}
 	resp, err := e.invoke(ctx, controlplane.AdminRequest{Truner: "ping"}, false)
 	switch {

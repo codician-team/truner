@@ -114,6 +114,10 @@ func (a *app) connect(ctx context.Context) (*env, error) {
 	if err != nil {
 		return nil, err
 	}
+	// On stderr, so that output such as `explain --json` stays parseable.
+	if older, msg := cliSkew(st.Outputs["Version"]); older {
+		fmt.Fprintf(os.Stderr, "%s %s\n\n", a.ui.yellow("!"), msg)
+	}
 	return &env{cfg: cfg, name: a.stack, stack: st}, nil
 }
 
