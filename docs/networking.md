@@ -56,7 +56,7 @@ plugin, and needs no open ports.
 To inspect a machine after its job, add `keep`:
 
 ```yaml
-runs-on: truner/cpu=4/keep=30m/run=${{ github.run_id }}
+runs-on: truner/cpu=4/keep=30m/run=${{ github.run_id }}-test
 ```
 
 The job log banner shows how to release the machine early (`touch /var/lib/truner/run/done`).

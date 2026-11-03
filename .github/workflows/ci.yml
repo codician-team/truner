@@ -14,7 +14,7 @@ permissions:
 # the organization.
 jobs:
   test:
-    runs-on: "${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || format('truner-codician/cpu=8/run={0}', github.run_id) }}"
+    runs-on: "${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || format('truner-codician/cpu=8/run={0}-test', github.run_id) }}"
     services:
       dynamodb:
         image: amazon/dynamodb-local
@@ -58,8 +58,9 @@ jobs:
         run: go run ./tools/build -targets host -out /tmp/dist
 
   profiles:
-    # Run the standard profile on real Ubuntu images.
-    runs-on: "${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || format('truner-codician/cpu=4/run={0}', github.run_id) }}"
+    # Run the standard profile on real Ubuntu images. Each matrix job has its own
+    # run token, so neither takes the other's machine.
+    runs-on: "${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || format('truner-codician/cpu=4/run={0}-profiles-{1}', github.run_id, strategy.job-index) }}"
     strategy:
       matrix:
         image: ["ubuntu:24.04", "ubuntu:22.04"]

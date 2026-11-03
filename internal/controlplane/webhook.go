@@ -51,6 +51,12 @@ func (cp *ControlPlane) HandleWebhook(ctx context.Context, headers map[string]st
 		return WebhookResponse{400, "invalid payload"}
 	}
 	if !labels.Match(cp.Env.LabelPrefix, ev.WorkflowJob.Labels) {
+		if label, foreign := labels.ForeignPrefix(cp.Env.LabelPrefix, ev.WorkflowJob.Labels); foreign != "" {
+			if ev.Action == "queued" {
+				cp.recordForeignPrefix(ctx, &ev, label, foreign)
+			}
+			return WebhookResponse{200, fmt.Sprintf("not a job for this installation: its label starts with %q, this installation's prefix is %q", foreign, cp.Env.LabelPrefix)}
+		}
 		return WebhookResponse{200, "not a truner job"}
 	}
 	log := cp.Log.With("job", ev.WorkflowJob.ID, "repo", ev.Repository.FullName, "action", ev.Action)
@@ -98,6 +104,35 @@ func (cp *ControlPlane) onQueued(ctx context.Context, ev *github.WorkflowJobEven
 	return cp.enqueue(ctx, wj.ID, 0)
 }
 
+// recordForeignPrefix notes a job that is meant for truner but carries another
+// installation's label prefix (`truner/…` sent to `truner-acme`). Nothing
+// starts a machine for it and GitHub only shows it as queued, so it is logged
+// and kept for `truner doctor`.
+func (cp *ControlPlane) recordForeignPrefix(ctx context.Context, ev *github.WorkflowJobEvent, label, foreign string) {
+	wj := ev.WorkflowJob
+	cp.Log.Warn("job labels use another label prefix: no machine is started for it",
+		"job", wj.ID, "repo", ev.Repository.FullName, "label", label, "prefix", foreign, "installationPrefix", cp.Env.LabelPrefix)
+	_, err := cp.Store.PutItem(ctx, fmt.Sprintf("foreignprefix#%d", wj.ID), Item{
+		"coll": CollForeignPrefix, "ts": time.Now().Unix(), "jobId": wj.ID, "installationId": ev.Installation.ID,
+		"owner": ev.Repository.Owner.Login, "repo": ev.Repository.Name, "workflow": wj.WorkflowName, "name": wj.Name,
+		"label": label, "prefix": foreign,
+	}, 2*24*time.Hour, true)
+	if err != nil {
+		cp.Log.Warn("could not record job with another label prefix", "job", wj.ID, "err", err)
+	}
+}
+
+// warnMachineTaken logs a job that started on a machine launched for another
+// job with the same labels while no machine was launched for itself: one job
+// with those labels is then left without a machine. A run= token per job
+// prevents it.
+func (cp *ControlPlane) warnMachineTaken(jobID int64, repo, runnerName string) {
+	if lid := launchJobID(runnerName); lid != 0 && lid != jobID {
+		cp.Log.Warn("job started on another job's machine before one was launched for it: a job with the same labels may wait without a machine (give each job its own run= label)",
+			"job", jobID, "repo", repo, "ranOn", runnerName, "launchedFor", lid)
+	}
+}
+
 // queueMessage is the body of a worker queue message.
 type queueMessage struct {
 	JobID int64 `json:"jobId"`
@@ -139,7 +174,9 @@ func (cp *ControlPlane) onInProgress(ctx context.Context, ev *github.WorkflowJob
 		return err
 	}
 	if errors.Is(err, ErrConditionFailed) {
-		// We never saw the queued event (e.g. it predates the install); record it now.
+		// We never saw the queued event (it predates the install, or GitHub
+		// delivers it late); record it now. No machine is launched for it.
+		cp.warnMachineTaken(wj.ID, ev.Repository.FullName, wj.RunnerName)
 		j := &Job{PK: JobPK(wj.ID), Coll: JobColl(started), TS: started.Unix(), JobID: wj.ID, RunID: wj.RunID, RunAttempt: wj.RunAttempt,
 			InstallationID: ev.Installation.ID, Owner: ev.Repository.Owner.Login, Repo: ev.Repository.Name, Name: wj.Name,
 			Workflow: wj.WorkflowName, Labels: wj.Labels, Status: StatusRunning, StartedAt: started.Unix(), RanOn: wj.RunnerName,

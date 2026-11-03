@@ -42,6 +42,7 @@ type installFlags struct {
 	cacheDays      int
 	logDays        int
 	upgradeOnly    bool
+	allowDowngrade bool
 }
 
 var stackNameRe = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9-]{0,40}$`)
@@ -85,17 +86,21 @@ stopped and reuses a pending GitHub link.`,
 	fl.BoolVar(&f.reconfigureApp, "new-github-app", false, "create a new GitHub App even if one is configured")
 	fl.IntVar(&f.cacheDays, "cache-days", 10, "days to keep magic cache entries and Docker S3 caches")
 	fl.IntVar(&f.logDays, "log-days", 14, "days to keep machine and control plane logs (1, 3, 5, 7, 14, 30, 60, 90, ...)")
+	fl.BoolVar(&f.allowDowngrade, "allow-downgrade", false, "deploy this CLI's version even if the installation runs a newer one")
 	return cmd
 }
 
 func (a *app) upgradeCmd() *cobra.Command {
-	return &cobra.Command{
+	f := &installFlags{noBake: true, upgradeOnly: true}
+	cmd := &cobra.Command{
 		Use:   "upgrade",
 		Short: "Upgrade an installation to this version of truner",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return a.install(cmd.Context(), &installFlags{noBake: true, upgradeOnly: true}, cmd)
+			return a.install(cmd.Context(), f, cmd)
 		},
 	}
+	cmd.Flags().BoolVar(&f.allowDowngrade, "allow-downgrade", false, "deploy this CLI's version even if the installation runs a newer one")
+	return cmd
 }
 
 func (a *app) install(ctx context.Context, f *installFlags, cmd *cobra.Command) error {
@@ -120,6 +125,12 @@ func (a *app) install(ctx context.Context, f *installFlags, cmd *cobra.Command) 
 		return err
 	}
 	if existing != nil {
+		// An older CLI would replace the installation with its own version and
+		// take away what came since (MicroVMs, for a v0.1.1 CLI on v0.1.3).
+		if older, _ := cliSkew(existing.Outputs["Version"]); older && !f.allowDowngrade {
+			return fmt.Errorf("the installation runs %s, newer than this CLI (%s). Update the CLI first: %s (or pass --allow-downgrade to go back to %s)",
+				existing.Outputs["Version"], version.Version, cliInstallCommand(), version.Version)
+		}
 		u.ok("Existing installation found (%s, version %s): it will be upgraded", existing.Status, existing.Outputs["Version"])
 	} else if f.upgradeOnly {
 		return errNotInstalled
@@ -281,7 +292,8 @@ func (a *app) install(ctx context.Context, f *installFlags, cmd *cobra.Command) 
 	prefix := firstNonEmpty(st.Parameters["LabelPrefix"], "truner")
 	u.printf("\n%s\n\n", u.green(u.bold("truner is ready!")))
 	u.printf("Use it in any workflow of the repositories the app is installed on:\n\n")
-	u.printf("    jobs:\n      build:\n        runs-on: %s/cpu=4/run=${{ github.run_id }}\n\n", prefix)
+	u.printf("    jobs:\n      build:\n        runs-on: %s\n\n", exampleLabel(prefix, "cpu=4", "build"))
+	u.printf("Give every job its own run= token (its name after the run id), so no other job takes its machine.\n")
 	u.printf("More shapes:  %s/runner=8cpu-linux-arm64   %s/cpu=16/ram=64/spot=false\n", prefix, prefix)
 	u.printf("              %s/image=ubuntu24-full       %s/runner=gpu-nvidia   %s/runner=4cpu-windows-x64\n\n", prefix, prefix, prefix)
 	u.printf("Next:  truner doctor   (verify everything)    truner status   truner jobs   truner costs\n")

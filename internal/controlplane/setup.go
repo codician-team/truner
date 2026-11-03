@@ -262,10 +262,11 @@ func (cp *ControlPlane) setupCallback(ctx context.Context, req events.APIGateway
 	return redirect("https://github.com/apps/" + url.PathEscape(creds.Slug) + "/installations/new")
 }
 
-func installedPage() events.APIGatewayV2HTTPResponse {
+func installedPage(prefix string) events.APIGatewayV2HTTPResponse {
 	return setupHTML(200, "✓ truner is connected to GitHub",
 		"<p>The app is installed. You can close this tab: your terminal or AI agent continues on its own.</p>"+
-			"<p>Change a workflow's <code>runs-on</code> to <code>truner/cpu=4/run=${{ github.run_id }}</code> to run it on truner.</p>")
+			"<p>Change a job's <code>runs-on</code> to <code>"+html.EscapeString(prefix)+"/cpu=4/run=${{ github.run_id }}-build</code> "+
+			"(with the job's own name after the run id) to run it on truner.</p>")
 }
 
 func redirect(to string) events.APIGatewayV2HTTPResponse {

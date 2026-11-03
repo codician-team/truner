@@ -496,7 +496,7 @@ func (a *app) connectCmd() *cobra.Command {
 		Long: `Connect opens a shell on the machine running a job. Combine with the
 keep=30m label to inspect a machine after its job finished:
 
-  runs-on: truner/cpu=4/keep=30m/run=${{ github.run_id }}`,
+  runs-on: truner/cpu=4/keep=30m/run=${{ github.run_id }}-build`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
