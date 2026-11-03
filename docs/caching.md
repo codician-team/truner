@@ -10,12 +10,12 @@ entries in the installation's S3 bucket under `cache/<owner>/<repo>/`.
 The runner is pointed at it transparently. Nothing changes in your workflows:
 
 ```yaml
-- uses: actions/cache@v4
+- uses: actions/cache@v6
   with:
     path: ~/.cache/go-build
     key: go-${{ hashFiles('**/go.sum') }}
     restore-keys: go-
-- uses: actions/setup-node@v4
+- uses: actions/setup-node@v7
   with: { node-version: 22, cache: pnpm }
 ```
 

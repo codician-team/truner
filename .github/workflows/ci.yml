@@ -20,14 +20,14 @@ jobs:
         image: amazon/dynamodb-local
         ports: ["8000:8000"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: gofmt
@@ -64,7 +64,7 @@ jobs:
       matrix:
         image: ["ubuntu:24.04", "ubuntu:22.04"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: |
           docker run --rm -v "$PWD/internal/agent/profiles:/p" ${{ matrix.image }} bash -c '
             apt-get update -qq && apt-get install -y -qq curl ca-certificates sudo >/dev/null &&

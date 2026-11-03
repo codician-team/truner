@@ -65,7 +65,7 @@ const workflow = computed(() => [
   ['del', '-   ', 'runs-on', ': ubuntu-latest'],
   ['add', '+   ', 'runs-on', `: truner/${ex.value.label}/run=\${{ github.run_id }}`],
   ['', '    ', 'steps', ':'],
-  ['', '      - ', 'uses', ': actions/checkout@v4'],
+  ['', '      - ', 'uses', ': actions/checkout@v7'],
 ])
 </script>
 

@@ -20,8 +20,8 @@ jobs:
   build:
     runs-on: "${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || format('truner-codician/cpu=4/run={0}', github.run_id) }}"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -30,7 +30,7 @@ jobs:
       # Pull requests and private repositories only check that the site builds.
       - id: pages
         if: github.event_name != 'pull_request' && !github.event.repository.private
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
       - name: build
         working-directory: docs
         env:
@@ -41,7 +41,7 @@ jobs:
           npm ci
           npm run build
       - if: steps.pages.outcome == 'success'
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: docs/.vitepress/dist
 
@@ -57,4 +57,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

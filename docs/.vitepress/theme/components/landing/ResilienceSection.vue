@@ -55,8 +55,8 @@ const banner = [
             <div v-for="b in banner" :key="b[0]" class="out kv">
               <span>{{ b[0] }}</span><span>{{ b[1] }}</span>
             </div>
-            <div class="stepname">Run actions/checkout@v4</div>
-            <div class="stepname">Run actions/setup-node@v4</div>
+            <div class="stepname">Run actions/checkout@v7</div>
+            <div class="stepname">Run actions/setup-node@v7</div>
             <div class="stepname">Run npm ci &amp;&amp; npm test</div>
             <div class="stepname open">Complete runner</div>
             <div class="out strong">

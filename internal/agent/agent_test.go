@@ -83,3 +83,16 @@ func TestPrefetch(t *testing.T) {
 		t.Fatalf("prefetch read %d files, %d bytes", files, bytes)
 	}
 }
+
+func TestNewestNode(t *testing.T) {
+	dir := t.TempDir()
+	for _, d := range []string{"node20", "node20_alpine", "node24", "node24_alpine", "nodejs"} {
+		os.MkdirAll(filepath.Join(dir, d, "bin"), 0o755)
+	}
+	if got := newestNode(dir); got != filepath.Join(dir, "node24") {
+		t.Fatalf("newestNode = %q", got)
+	}
+	if got := newestNode(filepath.Join(dir, "missing")); got != "" {
+		t.Fatalf("no externals must give no node, got %q", got)
+	}
+}

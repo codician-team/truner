@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- The runner prefetch reads only the runner and the Node.js build that actions run on,
+  not every bundled Node.js, so it competes less with the job for the volume.
+- Workflows and documentation examples use the current major versions of the GitHub
+  actions, which run on Node.js 24.
+
 ## v0.1.2
 
 - Faster job starts on baked images. The agent starts from its own systemd unit as soon

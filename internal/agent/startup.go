@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -73,15 +74,34 @@ func prefetch(dirs []string, workers int) (files int64, bytes int64, took time.D
 	return files, bytes, time.Since(start)
 }
 
-// warmRunner prefetches the runner's binaries, then the bundled Node.js that
-// JavaScript actions use, while the rest of the machine is being prepared.
+// warmRunner prefetches the runner's binaries, then the Node.js executable
+// that JavaScript actions run on, while the rest of the machine is being
+// prepared. The other bundled Node.js builds (older and Alpine) are rarely
+// used and would only compete with the job for the volume.
 func (a *Agent) warmRunner(dir string) {
 	if _, err := os.Stat(filepath.Join(dir, "bin")); err != nil {
 		return // not installed yet: the download leaves it in the page cache anyway
 	}
 	go func() {
-		externals, _ := filepath.Glob(filepath.Join(dir, "externals", "node*"))
-		n, b, took := prefetch(append([]string{filepath.Join(dir, "bin")}, externals...), 16)
+		paths := []string{filepath.Join(dir, "bin")}
+		if node := newestNode(filepath.Join(dir, "externals")); node != "" {
+			paths = append(paths, filepath.Join(node, "bin", "node"))
+		}
+		n, b, took := prefetch(paths, 16)
 		a.Log.Info("prefetched runner files", "files", n, "mib", b>>20, "took", took.Round(time.Millisecond))
 	}()
+}
+
+// newestNode returns the newest regular Node.js the runner bundles, such as
+// externals/node24 next to node20, node20_alpine and node24_alpine.
+func newestNode(externals string) string {
+	dirs, _ := filepath.Glob(filepath.Join(externals, "node*"))
+	best, bestV := "", -1
+	for _, d := range dirs {
+		v, err := strconv.Atoi(strings.TrimPrefix(filepath.Base(d), "node"))
+		if err == nil && v > bestV {
+			best, bestV = d, v
+		}
+	}
+	return best
 }
