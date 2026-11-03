@@ -16,7 +16,7 @@ internal/cacheproxy magic cache server (GitHub cache protocols → S3)
 internal/config     labels → machine spec resolution, config files
 internal/github     minimal GitHub App client
 tools/build         release build (embeds agent + Lambda into the CLI)
-docs/               user documentation
+docs/               user documentation and the website (VitePress)
 ```
 
 ## Building
@@ -58,6 +58,18 @@ The profile scripts can be tried in a container:
 docker run --rm -v "$PWD/internal/agent/profiles:/p" ubuntu:24.04 \
   bash -c 'apt-get update && apt-get install -y curl sudo && useradd -m runner && bash /p/standard.sh'
 ```
+
+## Documentation website
+
+The pages in `docs/` are plain Markdown and also make up the website. Preview it with
+Node.js 22 or newer:
+
+```bash
+cd docs && npm ci && npm run dev
+```
+
+The landing page (`docs/index.md`) is built from Vue components in
+`docs/.vitepress/theme/components/landing/`. `npm run build` fails on dead links.
 
 ## Guidelines
 

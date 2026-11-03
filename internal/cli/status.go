@@ -59,6 +59,9 @@ func (a *app) statusCmd() *cobra.Command {
 				u.printf("GitHub App   %s\n", u.yellow(err.Error()))
 			}
 			u.printf("Webhook URL  %s\n", e.out("WebhookUrl"))
+			if ip := e.out("StaticEgressIp"); ip != "" {
+				u.printf("Egress IP    %s %s\n", ip, u.dim("(private=true jobs)"))
+			}
 
 			cp := controlplane.NewWithConfig(&controlplane.Env{Stack: e.name, Region: e.cfg.Region}, e.cfg)
 			insts, err := cp.ManagedInstances(ctx, "pending", "running", "stopped", "stopping")

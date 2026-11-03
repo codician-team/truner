@@ -17,5 +17,6 @@ First release.
 - Self-healing: webhook redelivery, relaunch of dead machines, spot-interruption
   re-runs, deadlines, idle shutdown.
 - Cost tracking per job, monthly budget hard stop, alerts and daily reports.
+- Documentation website (VitePress, deployed to GitHub Pages) with a landing page.
 - CLI: status, doctor, jobs, costs, logs, explain, images, cache, config, pools,
   connect, quota, github, upgrade, uninstall.

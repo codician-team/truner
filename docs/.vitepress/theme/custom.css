@@ -1,0 +1,124 @@
+/* Brand */
+:root {
+  --vp-c-brand-1: #047857;
+  --vp-c-brand-2: #036c4f;
+  --vp-c-brand-3: #047857;
+  --vp-c-brand-soft: rgba(16, 185, 129, 0.14);
+
+  --vp-button-brand-bg: #047857;
+  --vp-button-brand-hover-bg: #065f46;
+  --vp-button-brand-active-bg: #064e3b;
+  --vp-button-brand-border: transparent;
+  --vp-button-brand-hover-border: transparent;
+  --vp-button-brand-active-border: transparent;
+
+  /* Terminals look the same in both color schemes. */
+  --tl-term-bg: #0b1120;
+  --tl-term-bar: #131b2e;
+  --tl-term-border: rgba(148, 163, 184, 0.18);
+  --tl-term-text: #d7e0ec;
+  --tl-term-dim: #7d8ba1;
+  --tl-term-green: #4ade80;
+  --tl-term-cyan: #67e8f9;
+  --tl-term-yellow: #fcd34d;
+  --tl-term-red: #fca5a5;
+
+  --tl-accent-grad: linear-gradient(120deg, #059669 0%, #0d9488 45%, #0284c7 100%);
+  --tl-card-bg: var(--vp-c-bg-soft);
+  --tl-card-border: var(--vp-c-divider);
+  --tl-grid-line: rgba(15, 23, 42, 0.06);
+  --tl-glow: rgba(16, 185, 129, 0.18);
+}
+
+.dark {
+  --vp-c-brand-1: #34d399;
+  --vp-c-brand-2: #6ee7b7;
+  --vp-c-brand-3: #047857;
+  --vp-c-brand-soft: rgba(52, 211, 153, 0.16);
+
+  --tl-accent-grad: linear-gradient(120deg, #34d399 0%, #2dd4bf 45%, #38bdf8 100%);
+  --tl-grid-line: rgba(148, 163, 184, 0.07);
+  --tl-glow: rgba(52, 211, 153, 0.14);
+}
+
+/* The landing page brings its own footer. */
+.VPHome {
+  margin-bottom: 0 !important;
+}
+
+/* Shared landing page building blocks */
+.tl-container {
+  max-width: 1152px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.tl-section {
+  padding: 96px 0;
+}
+
+.tl-section + .tl-section {
+  border-top: 1px solid var(--vp-c-divider);
+}
+
+.tl-eyebrow {
+  display: inline-block;
+  margin-bottom: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vp-c-brand-1);
+}
+
+.tl-h2 {
+  margin: 0;
+  max-width: 760px;
+  font-size: clamp(28px, 4vw, 40px);
+  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--vp-c-text-1);
+  text-wrap: balance;
+}
+
+.tl-lead {
+  margin: 16px 0 0;
+  max-width: 680px;
+  font-size: 18px;
+  line-height: 1.6;
+  color: var(--vp-c-text-2);
+  text-wrap: pretty;
+}
+
+.tl-gradient-text {
+  background: var(--tl-accent-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.tl-mono {
+  font-family: var(--vp-font-family-mono);
+}
+
+@media (max-width: 640px) {
+  .tl-container {
+    padding: 0 16px;
+  }
+  .tl-section {
+    padding: 64px 0;
+  }
+  .tl-lead {
+    font-size: 16px;
+  }
+}
+
+/* Docs pages */
+.vp-doc table {
+  font-size: 14px;
+}
+
+.vp-doc td code {
+  white-space: nowrap;
+}

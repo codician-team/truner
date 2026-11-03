@@ -3,6 +3,10 @@
 **Fast, cheap, ephemeral GitHub Actions runners in your own AWS account.**
 One command to install. One label to use. Zero cost while idle.
 
+[Website and documentation](https://truner.github.io/truner/) ·
+[Getting started](https://truner.github.io/truner/getting-started) ·
+[Releases](https://github.com/truner/truner/releases)
+
 ```yaml
 jobs:
   build:
