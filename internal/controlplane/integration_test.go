@@ -55,6 +55,7 @@ type fakeAWS struct {
 	instances map[string]*fakeInstance
 	order     []string
 	spotFail  bool
+	fleetErr  string // error code every CreateFleet returns
 	nextID    int
 	objects   map[string][]byte // S3, keyed by "bucket/key"
 	images    map[string]string // AMI id -> state
@@ -267,6 +268,10 @@ func (f *fakeAWS) ec2(w http.ResponseWriter, action string, form url.Values) {
 	case "CreateFleet":
 		f.fleets = append(f.fleets, form)
 		kind := form.Get("TargetCapacitySpecification.DefaultTargetCapacityType")
+		if f.fleetErr != "" {
+			write(`<fleetId>fleet-x</fleetId><errorSet><item><errorCode>` + f.fleetErr + `</errorCode><errorMessage>no</errorMessage></item></errorSet><fleetInstanceSet/>`)
+			return
+		}
 		if kind == "spot" && f.spotFail {
 			write(`<fleetId>fleet-x</fleetId><errorSet><item><errorCode>InsufficientInstanceCapacity</errorCode><errorMessage>no spot</errorMessage><lifecycle>spot</lifecycle></item></errorSet><fleetInstanceSet/>`)
 			return
@@ -809,5 +814,37 @@ func TestIntegrationBudgetBlocksLaunch(t *testing.T) {
 	}
 	if len(h.aws.messages) != 1 {
 		t.Fatalf("job must be re-queued for later, got %d messages", len(h.aws.messages))
+	}
+}
+
+// A job waits for EC2 vCPU quota: it retries every minute without using up
+// its launch attempts, and gives up once it has waited an hour.
+func TestIntegrationQuotaWait(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	h.aws.fleetErr = "VcpuLimitExceeded"
+	h.webhook("queued", 9501, []string{"truner/cpu=2"}, "", "")
+	for range maxLaunchAttempts + 5 {
+		if err := h.cp.ProcessJob(ctx, 9501); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if j := h.job(9501); j.Status != StatusQueued || j.Attempts != 0 || !strings.Contains(j.Error, "VcpuLimitExceeded") {
+		t.Fatalf("a job waiting for quota keeps waiting: %+v", j)
+	}
+	h.cp.Store.UpdateJob(ctx, 9501, map[string]any{"ts": time.Now().Add(-61 * time.Minute).Unix()}, nil)
+	if err := h.cp.ProcessJob(ctx, 9501); err != nil {
+		t.Fatal(err)
+	}
+	if j := h.job(9501); j.Status != StatusFailed || !strings.Contains(j.Error, "VcpuLimitExceeded") {
+		t.Fatalf("after an hour the job must give up: %+v", j)
+	}
+
+	// Other capacity errors still use up attempts.
+	h.aws.fleetErr = "InsufficientInstanceCapacity"
+	h.webhook("queued", 9502, []string{"truner/cpu=2"}, "", "")
+	h.cp.ProcessJob(ctx, 9502)
+	if j := h.job(9502); j.Status != StatusQueued || j.Attempts != 1 {
+		t.Fatalf("a capacity error counts as an attempt: %+v", j)
 	}
 }

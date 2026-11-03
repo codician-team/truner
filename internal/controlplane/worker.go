@@ -22,11 +22,16 @@ import (
 // maxLaunchAttempts bounds retries for capacity and transient errors (~1 hour).
 const maxLaunchAttempts = 15
 
+// quotaWait bounds how long a job waits for EC2 vCPU quota. It retries every
+// minute, since other jobs that finish free quota.
+const quotaWait = time.Hour
+
 // retryError asks for the job to be retried after a delay.
 type retryError struct {
 	err      error
 	delay    time.Duration
-	noCharge bool // waiting on a limit, not a failure: do not count the attempt
+	noCharge bool          // waiting on a limit, not a failure: do not count the attempt
+	maxWait  time.Duration // give up once the job has waited this long (0: no bound)
 }
 
 func (e *retryError) Error() string { return e.err.Error() }
@@ -89,10 +94,12 @@ func (cp *ControlPlane) ProcessJob(ctx context.Context, jobID int64) error {
 		if !re.noCharge {
 			attempts++
 		}
-		if attempts >= maxLaunchAttempts {
-			log.Error("giving up on job", "attempts", attempts, "err", lerr)
+		waited := time.Since(time.Unix(job.TS, 0))
+		if attempts >= maxLaunchAttempts || re.maxWait > 0 && waited > re.maxWait {
+			log.Error("giving up on job", "attempts", attempts, "waited", waited.Round(time.Second), "err", lerr)
 			cp.emit("LaunchFailures", 1, UnitCount)
-			cp.alert(ctx, "truner: could not start a runner", fmt.Sprintf("Job %s (%s / %s) could not get a machine after %d attempts: %v", job.FullName(), job.Workflow, job.Name, attempts, lerr))
+			cp.alert(ctx, "truner: could not start a runner", fmt.Sprintf("Job %s (%s / %s) could not get a machine in %d minutes (%d attempts): %v",
+				job.FullName(), job.Workflow, job.Name, int(waited.Minutes()), attempts, lerr))
 			return ignoreCond(cp.Store.UpdateJob(ctx, jobID, map[string]any{"status": StatusFailed, "error": lerr.Error(), "attempts": attempts}, nil))
 		}
 		log.Warn("launch deferred", "err", lerr, "retryIn", re.delay, "attempt", attempts)
@@ -228,9 +235,9 @@ func (cp *ControlPlane) launchForJob(ctx context.Context, job *Job) error {
 			hour := time.Now().UTC().Format("2006-01-02T15")
 			if ok, _ := cp.Store.PutItem(ctx, "alert#quota#"+hour, Item{}, 2*time.Hour, true); ok {
 				cp.alert(ctx, "truner: EC2 vCPU quota reached", "Launching a runner failed because the account's EC2 vCPU quota is exhausted:\n"+err.Error()+
-					"\n\nJobs wait and retry automatically. Raise the quota with `truner quota --request 512` (see `truner doctor`).")
+					"\n\nJobs wait and retry every minute, for up to an hour after they were queued. Raise the quota with `truner quota --request 512` (see `truner doctor`).")
 			}
-			return &retryError{err: err, delay: time.Minute}
+			return &retryError{err: err, delay: time.Minute, noCharge: true, maxWait: quotaWait}
 		}
 		var ce *CapacityError
 		if errors.As(err, &ce) {

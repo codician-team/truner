@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- **A micro job that asks for x64 fails with a reason.** `truner/micro/arch=x64`, a runner
+  profile with `arch: x64` or a runner name ending in `-x64` ran on an Arm64 MicroVM,
+  where x64-only tools break in less obvious ways. Such jobs now fail with "micro
+  machines are arm64 only; remove micro or arch=x64". An `arch: x64` default in the
+  account or repository config still lets jobs use `micro`.
+- **Jobs wait an hour for EC2 vCPU quota, as intended.** Each quota retry counted as a
+  launch attempt, so a job gave up after about 15 minutes while the alert email said it
+  would keep retrying. Quota retries now run every minute without using up attempts,
+  until the job has waited an hour since it was queued.
+
 ## v0.1.5
 
 - **`truner upgrade` updates the CLI first.** A v0.1.1 CLI on a Mac ran `truner upgrade`

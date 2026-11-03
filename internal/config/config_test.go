@@ -157,11 +157,31 @@ func TestMicro(t *testing.T) {
 	if js := resolve(t, Resolver{}, "truner/micro=false/cpu=8"); js.Micro {
 		t.Fatal("micro=false must stay on EC2")
 	}
-	for _, raw := range []string{"truner/micro/cpu=8", "truner/micro/gpu=1", "truner/micro/nvme", "truner/micro/ssh", "truner/micro/family=c7g", "truner/micro/image=windows2025", "truner/micro/ram=64"} {
+	for _, raw := range []string{"truner/micro/cpu=8", "truner/micro/gpu=1", "truner/micro/nvme", "truner/micro/ssh", "truner/micro/family=c7g", "truner/micro/image=windows2025", "truner/micro/ram=64",
+		"truner/micro/arch=x64", "truner/micro/arch=amd64", "truner/micro/runner=2cpu-linux-x64"} {
 		l, _ := labels.Parse("truner", []string{raw})
 		if _, err := (Resolver{}).Resolve(l); err == nil {
 			t.Errorf("%s: expected error", raw)
 		}
+	}
+	// Asking for arm64 is fine: MicroVMs are arm64.
+	for _, raw := range []string{"truner/micro/arch=arm64", "truner/micro/runner=2cpu-linux-arm64"} {
+		if js := resolve(t, Resolver{}, raw); !js.Micro || js.Arch != ArchARM64 {
+			t.Errorf("%s: %+v", raw, js)
+		}
+	}
+	// An x64 default does not keep jobs off MicroVMs; a runner profile that
+	// asks for x64 does.
+	gx, err := ParseGlobal([]byte("defaults:\n  arch: x64\nrunners:\n  intel:\n    arch: x64\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if js := resolve(t, Resolver{Global: gx}, "truner/micro"); !js.Micro || js.Arch != ArchARM64 {
+		t.Errorf("x64 default: %+v", js)
+	}
+	l, _ := labels.Parse("truner", []string{"truner/micro/runner=intel"})
+	if _, err := (Resolver{Global: gx}).Resolve(l); err == nil || !strings.Contains(err.Error(), "arm64 only") {
+		t.Errorf("x64 runner profile: %v", err)
 	}
 
 	g, err := ParseGlobal([]byte("runners:\n  check:\n    micro: true\n    cpu: 1\n"))
