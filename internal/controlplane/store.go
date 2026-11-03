@@ -31,6 +31,7 @@ const (
 	collBakes    = "bakes"
 	collReruns   = "reruns"
 	collImageUse = "imageuse"
+	collMachines = "machines"
 	// CollForeignPrefix holds jobs whose labels look like truner's but carry
 	// another label prefix, for `truner doctor`.
 	CollForeignPrefix = "foreignprefix"
@@ -145,9 +146,25 @@ func (s *Store) PutJob(ctx context.Context, j *Job) error {
 
 // GetJob loads a job record, returning (nil, nil) when it does not exist.
 func (s *Store) GetJob(ctx context.Context, id int64) (*Job, error) {
+	return s.getJob(ctx, JobPK(id))
+}
+
+// MachinePK returns the key of a machine kept apart from its job record
+// (see relaunchTaken).
+func MachinePK(runnerName string) string { return "machine#" + runnerName }
+
+// GetMachine loads the kept record of a runner's machine; nil when there is none.
+func (s *Store) GetMachine(ctx context.Context, runnerName string) (*Job, error) {
+	if runnerName == "" {
+		return nil, nil
+	}
+	return s.getJob(ctx, MachinePK(runnerName))
+}
+
+func (s *Store) getJob(ctx context.Context, pk string) (*Job, error) {
 	out, err := s.DB.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName:      &s.Table,
-		Key:            map[string]ddbtypes.AttributeValue{"pk": &ddbtypes.AttributeValueMemberS{Value: JobPK(id)}},
+		Key:            map[string]ddbtypes.AttributeValue{"pk": &ddbtypes.AttributeValueMemberS{Value: pk}},
 		ConsistentRead: aws.Bool(true),
 	})
 	if err != nil || out.Item == nil {

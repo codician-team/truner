@@ -109,7 +109,7 @@ the control plane, EC2 quotas (standard and GPU), the GitHub App's permissions, 
 installations, recent webhook deliveries and recent launch failures. Under **Jobs** it
 prints the label prefix and lists queued jobs that no machine is coming for: jobs whose
 labels carry another installation's prefix, and jobs whose machine ran another job with
-the same labels. GitHub confirms each one is still queued.
+the same labels and that got no machine again. GitHub confirms each one is still queued.
 
 ```bash
 truner doctor

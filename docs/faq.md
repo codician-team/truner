@@ -87,8 +87,9 @@ or a reached budget or instance limit. See [troubleshooting](troubleshooting.md)
 
 ### Why does one job of a run wait while the others run?
 
-Most likely its machine ran another job with the same labels. Give every job its own run
-token, `run=${{ github.run_id }}-<job>`, with the matrix value in matrix jobs. See
+Most likely its machine ran another job with the same labels. truner launches a machine
+again for it, so it starts later than the others. Give every job its own run token,
+`run=${{ github.run_id }}-<job>`, with the matrix value in matrix jobs. See
 [one run token per job](labels.md#one-run-token-per-job).
 
 ### Should I split one long CI job into several?

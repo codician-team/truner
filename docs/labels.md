@@ -49,13 +49,14 @@ jobs:
 With one token per run (`run=${{ github.run_id }}` alone), jobs with otherwise equal
 labels, such as matrix shards or several `micro/cpu=4` checks, swap machines. That is
 harmless while every job gets a machine. But GitHub sometimes delivers a job's `queued`
-event late, after the job has already started on a machine launched for another job.
-truner then launches nothing for the late job, and the job whose machine was taken waits
-with no machine until it is cancelled or GitHub gives up a day later. In one run of three
-`micro/cpu=4` jobs, astro check's `queued` event arrived 38 seconds after astro check had
-started on typecheck's MicroVM. Typecheck had taken build's, and build waited until the
-run was cancelled ([#3](https://github.com/codician-team/truner/issues/3)).
-`truner doctor` reports such jobs.
+event late, after the job has already started on a machine launched for another job, and
+one job is then left without a machine. In one run of three `micro/cpu=4` jobs, astro
+check's `queued` event arrived 38 seconds after astro check had started on typecheck's
+MicroVM. Typecheck had taken build's, and build waited
+([#3](https://github.com/codician-team/truner/issues/3)). truner now launches a machine
+again for the job left waiting, about 30 seconds after the other job started, so that job
+starts later than it would have. A token per job avoids the wait. `truner doctor` reports
+a job that still waits.
 
 ## Machine
 

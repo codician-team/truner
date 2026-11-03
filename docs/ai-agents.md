@@ -132,7 +132,8 @@ Offer to switch workflows in the user's repositories. Only `runs-on` changes:
   matrix value in a matrix (`run=${{ github.run_id }}-test-${{ matrix.shard }}`). The run
   id stops machines from taking jobs of other workflow runs. The job's name stops jobs of
   the same run with equal labels from taking each other's machines, which can leave one
-  job waiting with no machine. `github.job` is empty in `runs-on`, so write the name out.
+  job waiting for a second launch. `github.job` is empty in `runs-on`, so write the name
+  out.
 - For `runs-on: ${{ matrix.os }}`, change the matrix values instead.
 - Tests with CPU-time or wall-clock bounds: pin whole-core families, for example
   `family=m7a+m8a+r7a+r8a` ([why](labels.md#machine)).

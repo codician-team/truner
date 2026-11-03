@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/expression"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 
 	"github.com/codician-team/truner/internal/config"
@@ -122,24 +123,19 @@ func (cp *ControlPlane) recordForeignPrefix(ctx context.Context, ev *github.Work
 	}
 }
 
-// warnMachineTaken logs a job that started on a machine launched for another
-// job with the same labels while no machine was launched for itself: one job
-// with those labels is then left without a machine. A run= token per job
-// prevents it.
-func (cp *ControlPlane) warnMachineTaken(jobID int64, repo, runnerName string) {
-	if lid := launchJobID(runnerName); lid != 0 && lid != jobID {
-		cp.Log.Warn("job started on another job's machine before one was launched for it: a job with the same labels may wait without a machine (give each job its own run= label)",
-			"job", jobID, "repo", repo, "ranOn", runnerName, "launchedFor", lid)
-	}
-}
-
-// queueMessage is the body of a worker queue message.
+// queueMessage is the body of a worker queue message: launch a machine for a
+// job, or with Taken, check its repository for jobs left without a machine.
 type queueMessage struct {
 	JobID int64 `json:"jobId"`
+	Taken bool  `json:"taken,omitempty"`
 }
 
 func (cp *ControlPlane) enqueue(ctx context.Context, jobID int64, delay time.Duration) error {
-	body, _ := json.Marshal(queueMessage{JobID: jobID})
+	return cp.send(ctx, queueMessage{JobID: jobID}, delay)
+}
+
+func (cp *ControlPlane) send(ctx context.Context, m queueMessage, delay time.Duration) error {
+	body, _ := json.Marshal(m)
 	secs := int32(delay.Seconds())
 	if secs > 900 {
 		secs = 900
@@ -176,7 +172,7 @@ func (cp *ControlPlane) onInProgress(ctx context.Context, ev *github.WorkflowJob
 	if errors.Is(err, ErrConditionFailed) {
 		// We never saw the queued event (it predates the install, or GitHub
 		// delivers it late); record it now. No machine is launched for it.
-		cp.warnMachineTaken(wj.ID, ev.Repository.FullName, wj.RunnerName)
+		cp.noteTaken(ctx, wj.ID, ev.Repository.FullName, wj.RunnerName)
 		j := &Job{PK: JobPK(wj.ID), Coll: JobColl(started), TS: started.Unix(), JobID: wj.ID, RunID: wj.RunID, RunAttempt: wj.RunAttempt,
 			InstallationID: ev.Installation.ID, Owner: ev.Repository.Owner.Login, Repo: ev.Repository.Name, Name: wj.Name,
 			Workflow: wj.WorkflowName, Labels: wj.Labels, Status: StatusRunning, StartedAt: started.Unix(), RanOn: wj.RunnerName,
@@ -186,7 +182,10 @@ func (cp *ControlPlane) onInProgress(ctx context.Context, ev *github.WorkflowJob
 		}
 	}
 	if lid := launchJobID(wj.RunnerName); lid != 0 {
-		err := cp.Store.UpdateJob(ctx, lid, map[string]any{"pickedBy": wj.ID}, nil)
+		// Only while the record still holds this machine: a job launched
+		// again has another one.
+		cond := expression.Name("runnerName").Equal(expression.Value(wj.RunnerName))
+		err := cp.Store.UpdateJob(ctx, lid, map[string]any{"pickedBy": wj.ID}, &cond)
 		if err != nil && !errors.Is(err, ErrConditionFailed) {
 			return err
 		}
@@ -248,12 +247,9 @@ func (cp *ControlPlane) onCompleted(ctx context.Context, gh *github.Client, ev *
 
 	set["status"] = StatusCompleted
 	set["ranOn"] = wj.RunnerName
-	launch := job
-	if lid != wj.ID {
-		launch, err = cp.Store.GetJob(ctx, lid)
-		if err != nil {
-			return err
-		}
+	launch, kept, err := cp.machineOf(ctx, wj.RunnerName, job)
+	if err != nil {
+		return err
 	}
 	if launch != nil {
 		set["ranOnInstance"] = launch.InstanceID
@@ -271,8 +267,10 @@ func (cp *ControlPlane) onCompleted(ctx context.Context, gh *github.Client, ev *
 		// The machine's job is over. Only machine fields of the launch record
 		// change: with identical labels (e.g. matrix jobs) the job the machine
 		// was launched for may still be running elsewhere.
-		if lid != wj.ID {
-			ignoreCond(cp.Store.UpdateJob(ctx, lid, map[string]any{"machineDoneAt": completed.Unix()}, nil))
+		if lid != wj.ID || kept {
+			if err := cp.setMachine(ctx, wj.RunnerName, map[string]any{"machineDoneAt": completed.Unix()}); err != nil {
+				cp.Log.Warn("could not mark the machine done", "runner", wj.RunnerName, "err", err)
+			}
 		} else {
 			set["machineDoneAt"] = completed.Unix()
 		}

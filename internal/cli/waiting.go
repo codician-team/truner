@@ -11,8 +11,9 @@ import (
 	"github.com/codician-team/truner/internal/github"
 )
 
-// takenGrace is how long a job whose machine another job took may wait for a
-// second machine of the same labels (an EC2 boot) before doctor reports it.
+// takenGrace is how long a job whose machine another job took may wait before
+// doctor reports it: for a second machine of the same labels (an EC2 boot), or
+// for the control plane to launch one for it again (within about 2 minutes).
 const takenGrace = 5 * time.Minute
 
 // checkWaitingJobs reports queued jobs that no machine is coming for. GitHub
@@ -21,7 +22,8 @@ const takenGrace = 5 * time.Minute
 //   - labels written for another installation's prefix (`truner/…` sent to a
 //     `truner-acme` installation), which the control plane records;
 //   - jobs whose machine ran another job with the same labels, when no machine
-//     was launched for that other job (its queued event came late).
+//     was launched for that other job (its queued event came late) and the
+//     control plane did not launch one for the waiting job again.
 //
 // GitHub confirms each one is still queued, so a job that another
 // installation ran, or that was cancelled, is not reported.
@@ -60,7 +62,7 @@ func checkWaitingJobs(ctx context.Context, u *ui, e *env, gh *github.Client, job
 		}
 		waiting++
 		*problems++
-		u.bad("%s: %s / %s has waited %s with no machine: the one launched for it ran %s, which has the same labels. Re-run the job, and give every job its own run= token (run=${{ github.run_id }}-<job>)",
+		u.bad("%s: %s / %s has waited %s with no machine: the one launched for it ran %s, which has the same labels, and none was launched for it again (see `truner logs --control-plane`). Re-run the job, and give every job its own run= token (run=${{ github.run_id }}-<job>)",
 			j.FullName(), j.Workflow, j.Name, dur(time.Since(time.Unix(j.TS, 0))), firstNonEmpty(names[j.PickedBy], fmt.Sprintf("job %d", j.PickedBy)))
 	}
 	if waiting == 0 {

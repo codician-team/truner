@@ -111,8 +111,9 @@ Jobs with equal labels can take each other's machines: matrix shards, or several
 `micro/cpu=4` checks. That is harmless while every job gets a machine. When GitHub
 delivers a `queued` event late, after its job has started on another job's machine, one
 job is left without a machine. In one of the first parallel runs we measured, the
-`build` job waited until the run was cancelled. A token per job,
-`run=${{ github.run_id }}-<job>`, gives every job a machine of its own. See
+`build` job waited until the run was cancelled. truner now launches a machine again for
+such a job, about 30 seconds later, but it still starts last. A token per job,
+`run=${{ github.run_id }}-<job>`, keeps every job on the machine launched for it. See
 [labels](labels.md#one-run-token-per-job).
 
 ## Timing-sensitive tests

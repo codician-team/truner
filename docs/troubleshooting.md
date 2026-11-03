@@ -26,12 +26,14 @@ below.
    when a label's prefix is not the installation's.
 2. **The other jobs of the run started, this one did not.** Jobs with equal labels can
    take each other's machines. If GitHub delivers a job's `queued` event late, after that
-   job has started on a machine launched for another job, truner launches nothing for
-   it, and one job with those labels is left without a machine. The control plane logs
-   `job started on another job's machine before one was launched for it`, and `truner
-   doctor` reports the waiting job five minutes after its machine was launched.
-   Cancel the run and re-run it, and give every job its own run token
-   (`run=${{ github.run_id }}-<job>`, see [labels](labels.md#one-run-token-per-job)).
+   job has started on a machine launched for another job, one job with those labels is
+   left without a machine. The control plane logs `job started on another job's machine
+   before one was launched for it`, and about 30 seconds later `launching a machine again
+   for a job whose machine ran another job`. `truner doctor` reports a job that still
+   waits five minutes after its machine was launched: then the control plane did not
+   launch one again (see `truner logs --control-plane`). Cancel the run and re-run it,
+   and give every job its own run token (`run=${{ github.run_id }}-<job>`, see
+   [labels](labels.md#one-run-token-per-job)).
 3. **App installation:** the GitHub App must be installed on the repository
    (`truner github install`).
 4. **Webhooks:** `truner github status` lists recent deliveries. A `401` means the

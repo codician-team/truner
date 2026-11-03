@@ -356,7 +356,7 @@ func (cp *ControlPlane) ManagedInstances(ctx context.Context, states ...string) 
 	if len(states) == 0 {
 		states = []string{"pending", "running", "stopping", "stopped", "shutting-down"}
 	}
-	var out []ec2types.Instance
+	out := []ec2types.Instance{} // nil only on errors
 	p := ec2.NewDescribeInstancesPaginator(cp.EC2, &ec2.DescribeInstancesInput{Filters: []ec2types.Filter{
 		{Name: aws.String("tag:" + TagStack), Values: []string{cp.Env.Stack}},
 		{Name: aws.String("instance-state-name"), Values: states},

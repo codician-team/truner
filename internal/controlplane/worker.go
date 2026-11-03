@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/expression"
+
 	"github.com/codician-team/truner/internal/agentcfg"
 	"github.com/codician-team/truner/internal/cachestore"
 	"github.com/codician-team/truner/internal/config"
@@ -37,6 +39,13 @@ func (cp *ControlPlane) HandleQueueMessage(ctx context.Context, body string) err
 		cp.Log.Error("dropping malformed queue message", "body", body)
 		return nil
 	}
+	if m.Taken {
+		// The janitor checks too: no retries into the dead-letter queue.
+		if err := cp.checkTaken(ctx, m.JobID); err != nil {
+			cp.Log.Warn("checking for jobs left without a machine failed", "job", m.JobID, "err", err)
+		}
+		return nil
+	}
 	return cp.ProcessJob(ctx, m.JobID)
 }
 
@@ -58,7 +67,7 @@ func (cp *ControlPlane) ProcessJob(ctx context.Context, jobID int64) error {
 	if job.Status != StatusQueued && job.Status != StatusLaunching {
 		if job.InstanceID == "" && (job.Status == StatusRunning || job.Status == StatusCompleted) {
 			// It started before its (deferred) launch: on another job's machine.
-			cp.warnMachineTaken(job.JobID, job.FullName(), job.RanOn)
+			cp.noteTaken(ctx, job.JobID, job.FullName(), job.RanOn)
 		}
 		return nil // already launched, started, cancelled...
 	}
@@ -307,7 +316,16 @@ func (cp *ControlPlane) recordLaunch(ctx context.Context, job *Job, spec *config
 	cp.emit("InstancesLaunched", 1, UnitCount)
 	cp.emit("LaunchLatency", float64(r.Took.Milliseconds()), UnitMillis)
 	cp.emit("QueueToLaunchSeconds", float64(time.Now().Unix()-job.TS), UnitSeconds)
-	return cp.Store.UpdateJob(ctx, job.JobID, set, nil)
+	// A job can start on another job's machine while its own launches: its
+	// record then says so, and this machine is a spare for another job.
+	notStarted := expression.Name("status").NotEqual(expression.Value(StatusRunning)).
+		And(expression.Name("status").NotEqual(expression.Value(StatusCompleted)))
+	err = cp.Store.UpdateJob(ctx, job.JobID, set, &notStarted)
+	if errors.Is(err, ErrConditionFailed) {
+		delete(set, "status")
+		err = cp.Store.UpdateJob(ctx, job.JobID, set, nil)
+	}
+	return err
 }
 
 // runningCount counts active machines and MicroVMs, cached briefly so bursts of jobs do
