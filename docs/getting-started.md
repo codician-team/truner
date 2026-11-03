@@ -10,8 +10,10 @@ Copy the prompt from [Install with an AI agent](ai-agents.md).
 
 ## What you need
 
-- An **AWS account**. The installer needs administrator access. Day-to-day commands
-  need much less.
+- An **AWS account**. The installer needs administrator access, and so does
+  `truner upgrade`. A narrower policy must still allow `cloudformation:SetStackPolicy`,
+  which truner uses to [lock the installation](cli.md#upgrade) against older CLIs.
+  Day-to-day commands need much less.
 - A **GitHub organization or personal account** on github.com.
 - A browser on any device, for two clicks on GitHub.
 
@@ -32,6 +34,13 @@ irm https://raw.githubusercontent.com/codician-team/truner/main/install.ps1 | ie
 
 :::
 
+The script checks the download against the release's `checksums.txt` and prints the
+version it installed. On macOS and Linux it installs to `/usr/local/bin` when that is
+writable, otherwise to `~/.local/bin`. On Windows it installs to
+`%LOCALAPPDATA%\truner\bin` and adds that to your `PATH`. Set `TRUNER_INSTALL_DIR` for
+another directory, or `TRUNER_VERSION=v0.1.4` for a specific release. The script warns
+when another `truner` comes first on your `PATH`, because that one would run instead.
+
 Or download a binary for your platform from the
 [releases page](https://github.com/codician-team/truner/releases), and check it against
 `checksums.txt`.
@@ -42,7 +51,8 @@ Or download a binary for your platform from the
 truner install
 ```
 
-The installer walks through five steps:
+If a newer release is out, the installer first updates the CLI and runs again with it.
+Then it walks through five steps:
 
 1. **AWS account.** It uses your current AWS profile or environment variables. If it
    finds no working credentials, it asks you to paste an access key and can save it as
@@ -128,8 +138,8 @@ truner doctor
 ```
 
 `doctor` checks credentials, the stack, the control plane, EC2 quotas, the GitHub App
-and its recent webhook deliveries, and recent launch failures. It prints a fix for every
-problem it finds.
+and its recent webhook deliveries, recent launch failures and queued jobs that no machine
+is coming for. It prints a fix for every problem it finds.
 
 ## Next steps
 
@@ -142,11 +152,13 @@ problem it finds.
 ## Upgrading and removing
 
 ```bash
-truner upgrade      # update the CLI to the latest release, then the installation
-truner uninstall    # remove everything truner created
+truner upgrade              # update the CLI to the latest release, then the installation
+truner upgrade --cli-only   # update only the CLI
+truner uninstall            # remove everything truner created
 ```
 
-`truner upgrade` never downgrades an installation, and a CLI older than v0.1.5 cannot
-change an installation that a newer one has deployed. `uninstall` terminates every
-machine and deletes the baked images, the data bucket and the stack. After that, delete
+`truner upgrade` says which versions it upgrades from and to, and never downgrades an
+installation without `--allow-downgrade`. A CLI older than v0.1.5 cannot change an
+installation that a newer one has deployed. `uninstall` terminates every machine and
+deletes the baked and MicroVM images, the data bucket and the stack. After that, delete
 the GitHub App in your GitHub settings, because GitHub has no API for removing apps.

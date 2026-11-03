@@ -6,7 +6,8 @@ Start with:
 truner doctor
 ```
 
-It checks credentials, the stack, the control plane, EC2 quotas, the GitHub App
+It checks credentials, the stack and whether it is locked against older CLIs, the control
+plane, EC2 quotas, the dead-letter queue, the account config, the GitHub App
 (permissions, events, installations), recent webhook deliveries, recent launch
 failures and queued jobs that no machine is coming for, and prints the fix for each
 problem.
@@ -45,6 +46,9 @@ below.
    - `no capacity`: rare instance types or a single family. Widen `family`/`type`.
    - `instance limit reached` or `monthly budget … exhausted`: see `limits` in
      `truner config show`.
+   - A micro job's log warns `this micro job runs on an EC2 machine: …` with the reason,
+     for example a MicroVM image that is still being built. See
+     [MicroVMs](microvms.md#how-it-works).
 6. **Machine started but no job:** read the machine's log with `truner logs <job-id>`.
    It contains the bootstrap, the agent's steps and the runner's output.
 
@@ -71,6 +75,15 @@ on the `PATH`.
 If an installation must be changed outside truner, lift the lock for one update:
 `aws cloudformation update-stack ... --stack-policy-during-update-body
 '{"Statement":[{"Effect":"Allow","Action":"Update:*","Principal":"*","Resource":"*"}]}'`.
+
+`install` and `upgrade` fail with a message about `cloudformation:SetStackPolicy` when
+the AWS identity may not set stack policies. Add that permission, or use an identity
+with administrator access. `truner doctor` warns `a truner CLI older than v0.1.5 can
+still downgrade this installation` until the next `truner upgrade` locks it.
+
+If `truner upgrade` cannot replace the CLI, for example because it has no write access
+to the CLI's directory, it says so and changes nothing. Install the latest CLI with the
+script above, or pass `--no-cli-update` to deploy the CLI's own version.
 
 ## A job fails right at the start with a truner error
 
@@ -120,13 +133,14 @@ or a `.github/truner.yml` syntax error.
 
 | What | Where |
 |---|---|
-| Control plane | `truner logs --control-plane [-f] [--since 2h] [JOB-ID]` (CloudWatch `/truner/<stack>/…`) |
+| Control plane | `truner logs --control-plane [-f] [--since 2h] [JOB-ID]` (CloudWatch `/truner/<stack>/webhook`, `worker` and `janitor`) |
 | One machine | `truner logs <job-id>` (S3 `logs/<date>/<runner>.log`, uploaded when the machine ends) |
 | Image builds | `s3://<bucket>/logs/bakes/<bake-id>.log` |
+| MicroVM image builds and MicroVMs | CloudWatch `/truner/<stack>/microvms` (not read by `truner logs`) |
 | Metrics | CloudWatch dashboard (`truner status` prints the link) |
 
 ## Removing a stuck installation
 
-`truner uninstall` terminates machines, deletes baked images, empties the bucket and
-deletes the stack. If CloudFormation reports `DELETE_FAILED`, run it again. Most often
-a machine was still shutting down.
+`truner uninstall` terminates machines and MicroVMs, deletes baked and MicroVM images,
+empties the bucket and deletes the stack. If CloudFormation reports `DELETE_FAILED`, run
+it again. Most often a machine was still shutting down.

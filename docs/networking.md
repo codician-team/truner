@@ -68,7 +68,7 @@ truner install --ssh-cidr 203.0.113.7/32
 ```
 
 ```yaml
-runs-on: truner/cpu=4/ssh=true/keep=30m
+runs-on: truner/cpu=4/ssh=true/keep=30m/run=${{ github.run_id }}-test
 ```
 
 The public SSH keys of the user who triggered the run (from `github.com/<user>.keys`)
@@ -77,13 +77,15 @@ are installed for the `runner` user. The job log shows the `ssh` command. Use
 
 ## IAM: letting jobs use AWS
 
-Machines run with an instance role that can only read and write the cache and push to
-the ECR cache repository. To deploy from CI without stored keys, attach policies:
+Machines run with an instance role that can only read and write the cache, upload their
+logs, pull images from the account's ECR repositories, push to the ECR cache repository
+and use SSM Session Manager. MicroVMs have a role of their own with the same cache and log
+permissions, and no ECR or SSM. To deploy from CI without stored keys, attach policies:
 
 ```bash
 truner install --runner-policy arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
 ```
 
-Every job of the installation gets these permissions. For production deployments
+Every job of the installation gets these permissions, on EC2 machines and MicroVMs. For production deployments
 prefer GitHub OIDC (`aws-actions/configure-aws-credentials` with `role-to-assume`).
 It works on truner like anywhere else and scopes access per repository and branch.

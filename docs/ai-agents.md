@@ -37,7 +37,9 @@ at each step.
 
 ### 1. Install the CLI
 
-Check whether it is installed with `truner version`. If not:
+Check whether it is installed with `truner version`. An older CLI is fine:
+`truner install` and `truner upgrade` update it to the latest release first. If it is
+not installed:
 
 ```bash
 # macOS and Linux (installs to /usr/local/bin or ~/.local/bin)
@@ -45,11 +47,14 @@ curl -fsSL https://raw.githubusercontent.com/codician-team/truner/main/install.s
 ```
 
 ```powershell
-# Windows PowerShell (installs to the user's PATH; open a new shell afterwards)
+# Windows PowerShell (installs to %LOCALAPPDATA%\truner\bin and adds it to the user's PATH; open a new shell afterwards)
 irm https://raw.githubusercontent.com/codician-team/truner/main/install.ps1 | iex
 ```
 
-If `truner` is not found after installing, use the full path that the script printed.
+The script prints the version it installed and where. If `truner` is not found after
+installing, use that full path. If the script warns that another `truner` comes first on
+the `PATH`, that one would run instead: use the full path, and tell the user which file
+to remove.
 
 ### 2. Choose the AWS account and region
 
@@ -64,6 +69,10 @@ truner uses the standard AWS credential chain: environment variables, `AWS_PROFI
 - If there are no credentials, ask the user to run `truner login` in their own terminal.
   It asks for an access key of an IAM user with administrator access and saves it as
   the AWS profile `truner`. Continue when they confirm.
+- The credentials need administrator access. A narrower policy must still allow
+  `cloudformation:SetStackPolicy`, which truner uses on every install and upgrade.
+- If `truner status` already finds an installation in that account and region, go to
+  [Upgrading an existing installation](#upgrading-an-existing-installation) instead.
 
 ### 3. Choose the GitHub owner
 
@@ -94,6 +103,8 @@ output while it runs.
   phone.
 - The installer notices both steps by itself and continues. It ends with
   `truner is ready!` and exit code 0.
+- If a newer CLI is out, the installer first prints `truner vX.Y.Z is out!`, updates
+  itself and runs the same command again. That is expected.
 - If the command is interrupted, for example by your timeout, run exactly the same
   command again. It continues where it stopped and reuses the same link for an hour.
 - If it fails with `no AWS credentials found`, go back to step 2.
@@ -155,12 +166,34 @@ Tell the user:
   GitHub-hosted runners
 - the docs: https://codician-team.github.io/truner/
 
+## Upgrading an existing installation
+
+When the user asks to update truner, or truner is already installed:
+
+```bash
+truner upgrade --yes
+```
+
+- It updates the CLI to the latest release first and runs again with it. Step 1 then
+  says what happens, for example `it will be upgraded from v0.1.3 to v0.1.5`. The end
+  says `Installation "truner" is upgraded from v0.1.3 to v0.1.5.` Tell the user both
+  versions and pass on the release notes link it prints.
+- The deployment takes 2–4 minutes. Pass `--stack NAME` for an installation that is not
+  named `truner`, and the same `--profile` and `--region` as for the install.
+- If the CLI cannot replace itself (for example, no write access to its directory), it
+  prints an `ACTION REQUIRED` line with the install script's command and changes
+  nothing. Run the install script from step 1, then `truner upgrade --yes` again.
+- Never pass `--allow-downgrade` unless the user asks to go back to an older version.
+- Run `truner doctor` afterwards (step 5).
+
 ## Troubleshooting for agents
 
 | Output | What to do |
 |---|---|
 | `no AWS credentials found` | Ask the user to run `truner login` in their own terminal, then rerun. |
-| `AccessDenied` or `not authorized` during deployment | The credentials need administrator access (IAM, EC2, Lambda, CloudFormation, S3, DynamoDB, SQS). Ask the user for other credentials. |
+| `AccessDenied` or `not authorized` during deployment | The credentials need administrator access (IAM, EC2, Lambda, CloudFormation including `cloudformation:SetStackPolicy`, S3, DynamoDB, SQS, SSM, SNS, ECR, CloudWatch). Ask the user for other credentials. |
+| `the installation runs vX, newer than this CLI` | An old CLI runs, often another `truner` earlier on the `PATH`. Install the latest CLI (step 1) and rerun. Do not pass `--allow-downgrade` unless the user asks. |
+| `Action denied by stack policy` | A CLI older than v0.1.5 tried to change the installation and nothing changed. Install the latest CLI (step 1) and rerun. |
 | `This setup link has expired` in the browser | Run the same `truner install` command again for a new link. |
 | `the app ... belongs to X, not Y` | The app was created for the wrong account. The user deletes it with the link shown, and you rerun with the right `--github-owner`. |
 | `a GitHub App is already configured` | An app exists already. Rerun without changes. Add `--new-github-app` only if the user wants to replace it. |
@@ -177,6 +210,6 @@ Only when the user asks for it:
 truner uninstall --yes
 ```
 
-It terminates all machines and deletes the stack, the baked images and the cache. The
-user then deletes the GitHub App in their GitHub settings, because GitHub has no API for
-removing apps.
+It terminates all machines and deletes the stack, the baked and MicroVM images and the
+cache. The user then deletes the GitHub App in their GitHub settings, because GitHub has
+no API for removing apps.

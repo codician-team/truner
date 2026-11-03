@@ -73,9 +73,11 @@ With a snapshot 60 commits behind, the fetch of `vitejs/vite` from github.com re
 Snapshots work on Linux machines and MicroVMs with the magic cache on, for checkouts
 into the workspace or a `path:`, and for any shallow fetch into a new clone of the job's
 repository. Full-history checkouts (`fetch-depth: 0`), Windows and container jobs fetch
-everything from GitHub as before. Snapshots appear in `truner cache ls` with the key
-`truner-repository-snapshot` and expire with the other cache entries. `cache=github` or
-`cache=off` turns them off.
+everything from GitHub as before. A partial clone (`filter:` on `actions/checkout`) uses
+a snapshot but never saves one, so keep the default branch's checkout without a filter.
+A snapshot larger than 4 GiB is not saved, and the job log says so. Snapshots appear in
+`truner cache ls` with the key `truner-repository-snapshot` and expire with the other
+cache entries. `cache=github` or `cache=off` turns them off.
 
 ## Docker layer caching
 

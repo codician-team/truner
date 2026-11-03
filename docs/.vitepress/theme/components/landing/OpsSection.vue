@@ -13,7 +13,7 @@ const commands = [
   ['truner cache stats', 'cache size per repository'],
   ['truner config edit', 'profiles, pools, limits and access rules'],
   ['truner quota --request 512', 'raise EC2 vCPU quotas'],
-  ['truner upgrade', 'update the installation to this CLI\'s version'],
+  ['truner upgrade', 'update the CLI to the latest release, then the installation'],
 ]
 
 const checks = [

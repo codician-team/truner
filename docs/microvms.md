@@ -65,9 +65,13 @@ runs-on: truner/runner=check/run=${{ github.run_id }}-check
 What it does not have:
 
 - **No Docker.** `container:` jobs, service containers and `docker build` need EC2.
-- **No x64, GPUs, local NVMe, SSH access, private subnets or warm pools.** These labels
-  together with `micro` fail the job with an explanation.
-- **At most 8 hours.** `timeout` is capped at 480 minutes, and `keep` is ignored.
+- **No x64.** A micro job always runs on Arm64, whatever `arch` says.
+- **No Windows, GPUs, local NVMe, SSH access, private subnets, warm pools or instance
+  families and types.** These labels together with `micro` fail the job with an
+  explanation.
+- **Its own image.** `image` is ignored with a warning in the job log.
+- **At most 8 hours.** `timeout` is capped at 480 minutes, and `keep` is ignored with a
+  warning.
 
 ## How it works
 
@@ -89,12 +93,17 @@ What it does not have:
    while a runner update builds. Replaced image versions are deleted after 9 hours.
 
 **A micro job falls back to an EC2 Graviton machine with the same vCPUs** when its image
-is still building or its build failed, when the region has no Lambda MicroVMs, when the
-account's MicroVM quota is used up, or when a MicroVM started but never took the job.
-The job log explains why with a warning.
+is still building or its build failed, when the installation has no MicroVM roles yet,
+when the region has no Lambda MicroVMs, when the account's MicroVM quota is used up, or
+when a MicroVM started but did not take the job within 5 minutes. The job log explains
+why with a warning. That machine has 4 GiB per vCPU, the default `ubuntu24` image and a
+40 GiB disk, and it uses spot with on-demand fallback. After a failed build, truner
+tries again within an hour, or with the next job after `truner upgrade`.
 
 `truner images list` shows the MicroVM images, their state and any build error. Build and
 MicroVM logs are in the CloudWatch log group `/truner/<installation>/microvms`.
+`truner logs` does not read that group: open it in the CloudWatch console, or use
+`aws logs tail /truner/<installation>/microvms --follow`.
 
 ## Costs
 

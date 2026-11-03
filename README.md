@@ -92,8 +92,8 @@ per-minute markup, no runner VMs idling, and no Kubernetes cluster to babysit.
 
 ## Quick start
 
-You need an AWS account (administrator access for the install) and a GitHub
-organization or personal account.
+You need an AWS account (administrator access for the install and upgrades, including
+`cloudformation:SetStackPolicy`) and a GitHub organization or personal account.
 
 **With an AI agent.** Paste this into Claude Code, Codex, Cursor or any agent that can
 run commands on your computer:
@@ -189,6 +189,7 @@ runs-on: [truner, cpu=8, ram=32, "run=${{ github.run_id }}-test"]
 | `disk-iops`, `disk-throughput` | `disk-iops=10000` | faster gp3 volumes |
 | `nvme` | `nvme=true` | require local NVMe instance storage |
 | `gpu` | `gpu=1` | NVIDIA GPUs |
+| `micro` | `micro`, `micro/cpu=4` | a Lambda [MicroVM](docs/microvms.md) (1, 2 or 4 vCPU, Arm64, no Docker) instead of EC2 |
 | `private` | `private=true` | private subnets / static egress IP |
 | `ssh` | `ssh=true` | install the triggering user's GitHub SSH keys |
 | `keep` | `keep=30m` | keep the machine after the job for debugging |
@@ -263,8 +264,9 @@ flowchart LR
    starts the cache proxy and the runner. The runner takes the job, runs it, exits.
 5. The machine powers itself off and is terminated. Its log is saved to S3.
 6. The **janitor** heals everything in between: redelivers failed webhooks,
-   relaunches jobs whose machine never started, re-runs spot-interrupted jobs,
-   enforces deadlines, keeps pools full, bakes images and mirrors the runner.
+   relaunches jobs whose machine never started, launches a machine again for a job
+   whose machine another job took, re-runs spot-interrupted jobs, enforces deadlines,
+   keeps pools full, bakes images and mirrors the runner.
 
 Everything runs in **your** account. There is no truner service, no telemetry and no license key.
 Details: [architecture](docs/architecture.md).
@@ -363,14 +365,14 @@ self-hosted runner usage is billed on your plan.
 **macOS runners?** No. EC2 Mac instances need 24-hour dedicated hosts, which do not fit
 the per-job model.
 
-**How fast does a job start?** Typically 25–45 s on a baked image (EC2 boot dominates),
-around 10 s from a warm pool, and longer on the first use of an image while it is
-still being baked.
+**How fast does a job start?** Typically 45–65 s on a baked image (EC2 boot dominates),
+around 10 s from a warm pool, 6–20 s on a MicroVM, and longer on the first use of an
+image while it is still being baked.
 
 **What happens on a spot interruption?** If it happens before the job starts, truner
-relaunches on on-demand capacity. If it happens during the job, GitHub marks the job
-failed and truner re-runs it on on-demand capacity once the workflow run finishes
-(disable with `retryOnInterruption: false`).
+relaunches on on-demand capacity. If it happens during the job and the job fails, truner
+re-runs it on on-demand capacity once the workflow run finishes (disable with
+`retryOnInterruption: false`).
 
 **Can jobs use AWS without secrets?** Yes. Attach policies to the runner role with
 `truner install --runner-policy arn:aws:iam::aws:policy/...`. For production

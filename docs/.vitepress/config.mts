@@ -76,7 +76,7 @@ const descriptions: Record<string, string> = {
   '/faq': 'How truner compares with GitHub-hosted and self-hosted runners, start times, spot interruptions and security.',
   '/labels': 'The runs-on label syntax: CPU, memory, architecture, GPU, image, disk and spot settings, and built-in runner profiles.',
   '/configuration': 'Repository (.github/truner.yml) and account-wide configuration: defaults, runner profiles, images, pools, access and limits.',
-  '/caching': 'The S3-backed magic cache for actions/cache and setup-* actions, Docker layer caching and local NVMe.',
+  '/caching': 'The S3-backed magic cache for actions/cache and setup-* actions, repository snapshots for actions/checkout, Docker layer caching and local NVMe.',
   '/images': 'Built-in Ubuntu, GPU and Windows images, automatically baked AMIs and custom images.',
   '/pools': 'Warm pools of stopped, prepared machines for faster job starts.',
   '/microvms': 'Run short jobs such as linters and checks on Lambda MicroVMs that resume from a snapshot instead of booting EC2.',

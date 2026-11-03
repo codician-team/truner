@@ -32,6 +32,7 @@ const steps = [
 const janitor = [
   'redelivers failed webhooks',
   'relaunches machines that died before starting',
+  'launches a machine again for a job whose machine another job took',
   're-runs spot-interrupted jobs',
   'enforces deadlines and idle timeouts',
   'keeps warm pools full',
