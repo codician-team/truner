@@ -90,8 +90,11 @@ or a `.github/truner.yml` syntax error.
   minutes) and runs on an EC2 Graviton machine meanwhile. See [MicroVMs](microvms.md).
 - **`actions/checkout` is often the slowest step.** Every machine is new, so it fetches
   the repository from GitHub each time, and on EC2 that took anywhere from 10 to 100
-  seconds for the same 237 MB repository. See
-  [Splitting CI into parallel jobs](parallel-jobs.md#what-a-job-costs-before-its-first-step).
+  seconds for the same 237 MB repository. With a
+  [repository snapshot](caching.md#repository-snapshots), the
+  checkout step logs `truner: restored …` and fetches only newer objects. It logs
+  `truner: no snapshot …` until a job on the default branch has saved one, and nothing
+  for a full-history checkout (`fetch-depth: 0`).
 
 ## Cache misses
 

@@ -192,3 +192,8 @@ func (a *Agent) osBasePath(extra []string) string {
 
 func (a *Agent) osToolCache() string  { return `C:\hostedtoolcache\windows` }
 func (a *Agent) osScratchDir() string { return winRoot }
+
+// The repository cache needs the job hooks' git wrapper, which is Linux only.
+func osOwner(path string) (uid, gid int, ok bool)                { return 0, 0, false }
+func osRunAsOwner(cmd *exec.Cmd, path string)                    {}
+func (a *Agent) osWriteGitWrapper(script string) (string, error) { return "", nil }

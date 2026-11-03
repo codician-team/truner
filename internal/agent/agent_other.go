@@ -46,12 +46,15 @@ func (a *Agent) osRunnerDeps(ctx context.Context, dir string) {}
 func (a *Agent) hookPath(name string) string {
 	return filepath.Join(os.TempDir(), "truner", name+".sh")
 }
-func (a *Agent) osWriteHooks() error                     { return nil }
-func (a *Agent) osInstallSSHKeys(keys []string) error    { return errUnsupported }
-func (a *Agent) osDockerConfigDir() string               { return filepath.Join(os.TempDir(), "truner", ".docker") }
-func (a *Agent) osBakeCleanup(ctx context.Context) error { return errUnsupported }
-func (a *Agent) osEnablePoolService() error              { return errUnsupported }
-func osLock() bool                                       { return true }
-func (a *Agent) osBasePath(extra []string) string        { return os.Getenv("PATH") }
-func (a *Agent) osToolCache() string                     { return filepath.Join(os.TempDir(), "truner", "toolcache") }
-func (a *Agent) osScratchDir() string                    { return filepath.Join(os.TempDir(), "truner") }
+func (a *Agent) osWriteHooks() error                             { return nil }
+func (a *Agent) osInstallSSHKeys(keys []string) error            { return errUnsupported }
+func (a *Agent) osDockerConfigDir() string                       { return filepath.Join(os.TempDir(), "truner", ".docker") }
+func (a *Agent) osBakeCleanup(ctx context.Context) error         { return errUnsupported }
+func (a *Agent) osEnablePoolService() error                      { return errUnsupported }
+func osLock() bool                                               { return true }
+func (a *Agent) osBasePath(extra []string) string                { return os.Getenv("PATH") }
+func (a *Agent) osToolCache() string                             { return filepath.Join(os.TempDir(), "truner", "toolcache") }
+func (a *Agent) osScratchDir() string                            { return filepath.Join(os.TempDir(), "truner") }
+func osOwner(path string) (uid, gid int, ok bool)                { return 0, 0, false }
+func osRunAsOwner(cmd *exec.Cmd, path string)                    {}
+func (a *Agent) osWriteGitWrapper(script string) (string, error) { return "", nil }

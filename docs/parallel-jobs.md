@@ -70,9 +70,11 @@ cache does not help it, and its time on EC2 varied the most of any step. Caching
 dependencies, on the other hand, is nearly free: the job-completed hook reported
 `restored 233.7 MiB at 313.3 MiB/s`.
 
-To keep the checkout short:
+These times are without a snapshot. truner now restores a [snapshot of the repository](caching.md#repository-snapshots)
+from S3 before `actions/checkout` fetches, so the fetch transfers only the commits made
+since the snapshot, which a job on the default branch saves. To keep the checkout short:
 
-- Keep the default `fetch-depth: 1`.
+- Keep the default `fetch-depth: 1`. A full-history checkout does not use the snapshot.
 - Check out only what a job needs: `sparse-checkout:` or `filter: blob:none` on
   `actions/checkout`.
 - Keep large binary files out of the repository, or in Git LFS and fetched only by the
@@ -80,8 +82,6 @@ To keep the checkout short:
 - Count the checkout when you decide how far to split: a job that runs for 20 seconds
   after a 30-second checkout is better merged into another one.
 
-Caching the repository's git objects in the magic cache is being measured
-([#4](https://github.com/codician-team/truner/issues/4)).
 
 ## Hidden ordering dependencies
 

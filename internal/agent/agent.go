@@ -49,6 +49,7 @@ type Agent struct {
 	warnings []string
 	cache    *cacheproxy.Server
 	cacheURL string
+	repo     *repoCache
 	storage  string // local NVMe mount, if any
 }
 

@@ -351,12 +351,17 @@ fi
 if [ -n "${GITHUB_ENV:-}" ] && [ -s %[1]s/job.env ]; then
   grep -v '^$' %[1]s/job.env >>"$GITHUB_ENV" || true
 fi
+# The repository and refs for the repository cache, before any step runs.
+curl -fsS -m 5 -o /dev/null --data-urlencode "repository=${GITHUB_REPOSITORY:-}" --data-urlencode "server=${GITHUB_SERVER_URL:-}" \
+  --data-urlencode "ref=${GITHUB_REF:-}" --data-urlencode "base=${GITHUB_BASE_REF:-}" --data-urlencode "event=${GITHUB_EVENT_PATH:-}" \
+  http://127.0.0.1:%[2]d/_truner/repo/job 2>/dev/null || true
 exit 0
-`, sd)
+`, sd, CachePort)
 	completed := fmt.Sprintf(`#!/bin/bash
 # truner job-completed hook
 touch %[1]s/job-completed 2>/dev/null || true
 curl -fsS -m 3 http://127.0.0.1:%[2]d/_truner/stats 2>/dev/null || true
+curl -fsS -m 330 -X POST http://127.0.0.1:%[2]d/_truner/repo/save 2>/dev/null || true
 exit 0
 `, sd, CachePort)
 	if err := os.WriteFile(a.hookPath("job-started"), []byte(started), 0o755); err != nil {
@@ -456,4 +461,39 @@ func (a *Agent) osScratchDir() string {
 		return filepath.Join(a.storage, "tmp")
 	}
 	return "/var/lib/truner"
+}
+
+// osOwner returns the owner of a file.
+func osOwner(path string) (uid, gid int, ok bool) {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return 0, 0, false
+	}
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok {
+		return 0, 0, false
+	}
+	return int(st.Uid), int(st.Gid), true
+}
+
+// osRunAsOwner makes cmd run as the owner of path when the agent is root and
+// path belongs to another user: git refuses repositories of other users.
+func osRunAsOwner(cmd *exec.Cmd, path string) {
+	uid, gid, ok := osOwner(path)
+	if !ok || os.Geteuid() != 0 || uid == 0 {
+		return
+	}
+	cmd.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: uint32(uid), Gid: uint32(gid), NoSetGroups: true}}
+	if u, err := user.LookupId(strconv.Itoa(uid)); err == nil {
+		cmd.Env = append(cmd.Env, "HOME="+u.HomeDir)
+	}
+}
+
+// osWriteGitWrapper installs the git wrapper and returns its directory.
+func (a *Agent) osWriteGitWrapper(script string) (string, error) {
+	dir := "/var/lib/truner/bin"
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	return dir, os.WriteFile(filepath.Join(dir, "git"), []byte(script), 0o755)
 }

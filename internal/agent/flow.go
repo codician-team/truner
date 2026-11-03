@@ -272,8 +272,9 @@ func (a *Agent) startCache(ctx context.Context) error {
 		ip = "127.0.0.1"
 	}
 	tmp := filepath.Join(a.osScratchDir(), "cache-tmp")
+	store := cachestore.NewS3(s3.NewFromConfig(cfg), a.Cfg.Cache.Bucket)
 	srv, err := cacheproxy.New(cacheproxy.Options{
-		Store:     cachestore.NewS3(s3.NewFromConfig(cfg), a.Cfg.Cache.Bucket),
+		Store:     store,
 		Prefix:    a.Cfg.Cache.Prefix,
 		PublicURL: fmt.Sprintf("http://%s:%d", ip, CachePort),
 		TempDir:   tmp,
@@ -290,6 +291,8 @@ func (a *Agent) startCache(ctx context.Context) error {
 	mux.HandleFunc("/_truner/stats", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, cacheSummary(srv.Stats()))
 	})
+	a.repo = &repoCache{a: a, store: store, prefix: a.Cfg.Cache.Prefix, work: filepath.Join(a.osRunnerDir(), "_work"), tried: map[string]bool{}}
+	a.repo.handle(mux)
 	mux.Handle("/", srv)
 	go (&http.Server{Handler: mux, ReadHeaderTimeout: 30 * time.Second}).Serve(ln)
 	a.cache = srv
@@ -436,6 +439,17 @@ func (a *Agent) writeRunnerFiles(dir string, cacheOn bool, fatal string) ([]stri
 		}
 	}
 	env["PATH"] = a.osBasePath(readLines(extraPathFile()))
+	if cacheOn && a.repo != nil {
+		// The repository cache's git wrapper goes first.
+		if git := lookPathIn("git", env["PATH"]); git != "" {
+			if bin, err := a.osWriteGitWrapper(gitWrapper(git, CachePort)); err != nil {
+				a.warn("repository cache disabled: " + err.Error())
+			} else if bin != "" {
+				a.repo.git = git
+				env["PATH"] = bin + string(os.PathListSeparator) + env["PATH"]
+			}
+		}
+	}
 	var jobEnv []string
 	if cacheOn {
 		env["ACTIONS_RESULTS_URL"] = a.cacheURL
@@ -520,6 +534,9 @@ func (a *Agent) banner(cacheOn bool) string {
 	}
 	if cacheOn {
 		fmt.Fprintf(&b, "Cache:      truner magic cache (S3 bucket %s) for actions/cache, setup-* caching and buildx type=gha\n", a.Cfg.Cache.Bucket)
+		if a.repo != nil && a.repo.git != "" {
+			b.WriteString("            and repository snapshots for actions/checkout\n")
+		}
 	} else if a.Cfg.Cache.Enabled {
 		b.WriteString("Cache:      GitHub cache service (magic cache unavailable on this machine)\n")
 	}
