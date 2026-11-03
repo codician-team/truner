@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.1.5
 
 - **`truner upgrade` updates the CLI first.** A v0.1.1 CLI on a Mac ran `truner upgrade`
   on two v0.1.3 installations and deployed v0.1.1: it said "it will be upgraded",
