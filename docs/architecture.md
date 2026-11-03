@@ -83,7 +83,9 @@ runner and launches with EC2 Fleet in `instant` mode. A per-job launch template 
 the user data and is deleted right after the launch. Capacity problems are retried with
 backoff (15 seconds, doubling up to 5 minutes) for up to 15 attempts, about an hour; then
 the job fails and an alert is sent. Jobs held back by the instance limit or the budget
-are retried every 30 seconds or 10 minutes without using up attempts. Unrecoverable
+are retried every 30 seconds or 10 minutes without using up attempts. A job that hits
+the EC2 vCPU quota is retried every minute without using up attempts, for up to an hour
+after it was queued. Unrecoverable
 configuration errors launch a minimal machine that fails the job with the error message.
 A micro job runs on an EC2 machine instead when no MicroVM can run it
 ([MicroVMs](microvms.md#how-it-works)). The worker also runs the checks for
@@ -178,7 +180,7 @@ machine's cost to the job that ran on it and ends it. A run token per job
 | Duplicate webhook | conditional write, enqueued once |
 | No spot capacity | on-demand fallback in the same request cycle |
 | No capacity at all / API throttling | retried with exponential backoff (≈1 h), then the job fails with an email alert |
-| vCPU quota exhausted | retried every minute for up to 15 attempts, with an hourly email alert |
+| vCPU quota exhausted | retried every minute for up to an hour after the job was queued, without using up its launch attempts, with an hourly email alert |
 | Machine dies before taking the job | relaunched, on on-demand capacity if it was spot |
 | Runner does not take the job within 25 minutes (5 on a MicroVM) | machine terminated, job relaunched |
 | No MicroVM for a micro job (image building or failed, no quota, no MicroVMs in the region) | the job runs on an EC2 Graviton machine with the same vCPUs |

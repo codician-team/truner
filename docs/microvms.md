@@ -65,7 +65,10 @@ runs-on: truner/runner=check/run=${{ github.run_id }}-check
 What it does not have:
 
 - **No Docker.** `container:` jobs, service containers and `docker build` need EC2.
-- **No x64.** A micro job always runs on Arm64, whatever `arch` says.
+- **No x64.** A job that asks for x64 together with `micro`, through `arch=x64`, its
+  runner profile or a runner name ending in `-x64`, fails with an explanation. An
+  `arch: x64` in the account or repository `defaults` is overridden, and the job runs on
+  Arm64.
 - **No Windows, GPUs, local NVMe, SSH access, private subnets, warm pools or instance
   families and types.** These labels together with `micro` fail the job with an
   explanation.
