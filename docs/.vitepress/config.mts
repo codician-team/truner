@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
-import { defineConfig, type DefaultTheme } from 'vitepress'
+import { defineConfigWithTheme, type DefaultTheme } from 'vitepress'
 
 const repo = 'https://github.com/codician-team/truner'
 
@@ -12,6 +12,22 @@ const version =
 // DOCS_BASE and DOCS_URL; a custom domain or local preview uses the root.
 const base = process.env.DOCS_BASE || '/'
 const siteUrl = (process.env.DOCS_URL || 'https://codician-team.github.io/truner').replace(/\/$/, '')
+
+// The star count when the site is built, so the landing page shows it without
+// waiting for the GitHub API. The Pages workflow passes GITHUB_TOKEN because
+// anonymous API calls from shared runners are often rate limited.
+async function fetchStars(): Promise<number | null> {
+  try {
+    const headers: Record<string, string> = { Accept: 'application/vnd.github+json' }
+    if (process.env.GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`
+    const res = await fetch(repo.replace('github.com', 'api.github.com/repos'), { headers, signal: AbortSignal.timeout(5000) })
+    const n = res.ok ? (await res.json()).stargazers_count : null
+    return typeof n === 'number' ? n : null
+  } catch {
+    return null
+  }
+}
+const stars = await fetchStars()
 
 const sidebar: DefaultTheme.SidebarItem[] = [
   {
@@ -109,7 +125,7 @@ function writeAgentFiles(srcDir: string, outDir: string) {
   writeFileSync(join(outDir, 'llms-full.txt'), full.join('\n\n'))
 }
 
-export default defineConfig({
+export default defineConfigWithTheme<DefaultTheme.Config & { stars: number | null }>({
   title: 'truner',
   description:
     'Fast, cheap, ephemeral GitHub Actions runners in your own AWS account. Spot pricing, an unlimited S3 cache, warm pools and zero idle cost.',
@@ -132,6 +148,7 @@ export default defineConfig({
   ],
 
   themeConfig: {
+    stars,
     logo: { src: '/logo.svg', alt: '' },
     nav: [
       { text: 'Guide', link: '/getting-started', activeMatch: '^/(?!cli|labels)[a-z]' },

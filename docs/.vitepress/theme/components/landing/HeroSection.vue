@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { withBase } from 'vitepress'
+import { formatStars, repoSlug, useStars } from '../../stars'
 import InstallCommand from './InstallCommand.vue'
 import TerminalWindow from './TerminalWindow.vue'
+
+const stars = useStars()
+const starPath = 'M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17.3l-5.9 3.3 1.3-6.6-4.9-4.6 6.6-.8L12 2.5Z'
 
 type Line = { kind: 'step' | 'ok' | 'info' | 'action' | 'link' | 'ready'; text: string; dim?: string; pause?: number }
 
@@ -58,13 +62,21 @@ const proof = ['≈ $0 while idle', 'x64 · Arm64 · GPU · Windows', 'No licens
         </p>
         <div class="actions">
           <a class="btn brand" :href="withBase('/getting-started')">Get started</a>
-          <a class="btn alt" href="https://github.com/codician-team/truner">
+          <a
+            class="btn alt stars"
+            :href="`https://github.com/${repoSlug}`"
+            :aria-label="stars ? `Star truner on GitHub (${stars} stars)` : 'Star truner on GitHub'"
+          >
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path
                 d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.19 1.76 1.19 1.03 1.76 2.69 1.25 3.35.96.1-.75.4-1.25.73-1.54-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.8 1.19 1.83 1.19 3.09 0 4.42-2.69 5.39-5.26 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"
               />
             </svg>
-            View on GitHub
+            <span>{{ stars ? 'Star' : 'Star on GitHub' }}</span>
+            <!-- No count until there is one: "0" reads as a warning, not proof. -->
+            <span v-if="stars" class="count">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path :d="starPath" /></svg>{{ formatStars(stars) }}
+            </span>
           </a>
         </div>
         <InstallCommand class="install" />
@@ -218,6 +230,32 @@ h1 span {
   width: 18px;
   height: 18px;
   fill: currentColor;
+}
+
+/* GitHub stars: the count sits in its own segment, like GitHub's button. */
+.btn.stars {
+  padding-right: 6px;
+}
+
+.btn.stars > span:not(.count) {
+  padding-right: 14px;
+}
+
+.count {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: var(--vp-c-default-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.count svg {
+  width: 15px;
+  height: 15px;
+  color: #e3b341;
 }
 
 .install {
