@@ -71,8 +71,21 @@ func (f *fakeAWS) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer f.mu.Unlock()
 	switch {
 	case strings.HasPrefix(target, "AmazonSSM."):
-		var in struct{ Name string }
+		var in struct {
+			Name, Value string
+			Overwrite   bool
+		}
 		json.Unmarshal(body, &in)
+		if target == "AmazonSSM.PutParameter" {
+			if _, ok := f.params[in.Name]; ok && !in.Overwrite {
+				w.WriteHeader(400)
+				fmt.Fprint(w, `{"__type":"ParameterAlreadyExists","message":"exists"}`)
+				return
+			}
+			f.params[in.Name] = in.Value
+			json.NewEncoder(w).Encode(map[string]any{"Version": 1, "Tier": "Standard"})
+			return
+		}
 		v, ok := f.params[in.Name]
 		if !ok {
 			w.WriteHeader(400)
@@ -264,15 +277,30 @@ func xmlEsc(s string) string {
 }
 
 type fakeGitHub struct {
-	mu        sync.Mutex
-	jitNames  []string
-	jobStatus map[int64]string
-	repoCfg   string
-	deleted   int
+	mu          sync.Mutex
+	jitNames    []string
+	jobStatus   map[int64]string
+	repoCfg     string
+	deleted     int
+	appOwner    string // owner of apps created through the manifest flow
+	conversions int
 }
 
 func (g *fakeGitHub) handler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("POST /app-manifests/{code}/conversions", func(w http.ResponseWriter, r *http.Request) {
+		g.mu.Lock()
+		g.conversions++
+		owner := g.appOwner
+		g.mu.Unlock()
+		key, _ := rsa.GenerateKey(rand.Reader, 2048)
+		w.WriteHeader(201)
+		json.NewEncoder(w).Encode(map[string]any{
+			"id": 77, "slug": "truner-" + owner, "name": "truner-" + owner, "webhook_secret": "new-secret",
+			"pem":      string(pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})),
+			"html_url": "https://github.com/apps/truner-" + owner, "owner": map[string]any{"login": owner},
+		})
+	})
 	mux.HandleFunc("POST /app/installations/{id}/access_tokens", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(201)
 		json.NewEncoder(w).Encode(map[string]any{"token": "ghs_test", "expires_at": time.Now().Add(time.Hour)})

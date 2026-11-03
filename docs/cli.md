@@ -46,6 +46,24 @@ truner install [flags]
 
 See [networking](networking.md) for the network options.
 
+In scripts and AI agents, pass `--region` and `--github-owner` (or leave it out for a
+personal account) and add `--yes`. Without a terminal the installer never prompts. It
+prints lines starting with `ACTION REQUIRED`, each followed by a link the user has to
+open, and it exits with a non-zero code on failure. If it is interrupted, run the same
+command again: it continues where it stopped and reuses a pending GitHub link for up to
+an hour. See [Install with an AI agent](ai-agents.md).
+
+### login
+
+Asks for an AWS access key, checks it and saves it as the AWS profile `truner`, which
+later commands use automatically. It only runs in an interactive terminal. When an AI
+agent runs the other commands for you, run `truner login` yourself, so the secret key
+never passes through the agent.
+
+```bash
+truner login
+```
+
 ### upgrade
 
 Upgrades an installation to the version of this CLI. Install the new CLI first.
@@ -57,7 +75,8 @@ truner upgrade
 ### uninstall
 
 Terminates all runner machines, deletes baked images, the data bucket and the
-CloudFormation stack. It asks you to type the installation name to confirm.
+CloudFormation stack. It asks you to type the installation name to confirm, or
+proceeds without asking with `--yes`.
 
 ```bash
 truner uninstall [--keep-images]

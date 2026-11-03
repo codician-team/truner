@@ -40,7 +40,7 @@ per-minute markup, no runner VMs idling, and no Kubernetes cluster to babysit.
 - [Costs](#costs)
 - [Security](#security)
 - [FAQ](#faq)
-- Docs: [labels](docs/labels.md) · [configuration](docs/configuration.md) · [caching](docs/caching.md) · [images](docs/images.md) · [warm pools](docs/pools.md) · [networking & access](docs/networking.md) · [architecture](docs/architecture.md) · [troubleshooting](docs/troubleshooting.md)
+- Docs: [AI agents](docs/ai-agents.md) · [labels](docs/labels.md) · [configuration](docs/configuration.md) · [caching](docs/caching.md) · [images](docs/images.md) · [warm pools](docs/pools.md) · [networking & access](docs/networking.md) · [architecture](docs/architecture.md) · [troubleshooting](docs/troubleshooting.md)
 
 ## Features
 
@@ -93,6 +93,20 @@ per-minute markup, no runner VMs idling, and no Kubernetes cluster to babysit.
 You need an AWS account (administrator access for the install) and a GitHub
 organization or personal account.
 
+**With an AI agent.** Paste this into Claude Code, Codex, Cursor or any agent that can
+run commands on your computer:
+
+```text
+Install truner in my AWS account so my GitHub Actions jobs run on it.
+Follow https://codician-team.github.io/truner/ai-agents.md
+```
+
+The agent does the rest and asks you for the two clicks GitHub requires. Agents find
+all docs as Markdown through [llms.txt](https://codician-team.github.io/truner/llms.txt).
+The instructions it follows are in [docs/ai-agents.md](docs/ai-agents.md).
+
+**By hand:**
+
 **1. Install the CLI**
 
 ```bash
@@ -119,8 +133,9 @@ The installer walks you through everything:
    paste an access key (and can save it as a `truner` profile).
 2. **Preflight**: availability zones and EC2 vCPU quotas.
 3. **Control plane**: deploys a CloudFormation stack (about 3 minutes).
-4. **GitHub App**: opens your browser to create a private GitHub App with one
-   click, then to install it on the repositories you choose.
+4. **GitHub App**: prints a link (and opens it) to create a private GitHub App with
+   one click, then to install it on the repositories you choose. The link works on any
+   device, and an interrupted install picks up where it stopped.
 5. **Images**: starts building optimized Ubuntu images in the background.
 
 **3. Use it**

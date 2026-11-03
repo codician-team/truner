@@ -18,13 +18,20 @@ type AdminRequest struct {
 	Image  string `json:"image,omitempty"`
 	Arch   string `json:"arch,omitempty"`
 	Force  bool   `json:"force,omitempty"`
+
+	// GitHub App setup (github-setup, github-setup-status)
+	State   string `json:"state,omitempty"`
+	Owner   string `json:"owner,omitempty"`
+	AppName string `json:"appName,omitempty"`
+	Replace bool   `json:"replace,omitempty"`
 }
 
 // AdminResponse is returned to the CLI.
 type AdminResponse struct {
-	OK      bool   `json:"ok"`
-	Message string `json:"message,omitempty"`
-	Version string `json:"version,omitempty"`
+	OK      bool         `json:"ok"`
+	Message string       `json:"message,omitempty"`
+	Version string       `json:"version,omitempty"`
+	Setup   *SetupStatus `json:"setup,omitempty"`
 }
 
 // Handle dispatches any Lambda event: API Gateway (webhooks), SQS (launch
@@ -84,8 +91,17 @@ func (cp *ControlPlane) handleHTTP(ctx context.Context, req events.APIGatewayV2H
 	if path == "" {
 		path = req.RequestContext.HTTP.Path
 	}
-	if req.RequestContext.HTTP.Method == "GET" && (path == "/" || path == "/health" || path == "/healthz") {
-		return events.APIGatewayV2HTTPResponse{StatusCode: 200, Body: "truner " + cp.Env.Version + " ok"}
+	if req.RequestContext.HTTP.Method == "GET" {
+		switch {
+		case path == "/" || path == "/health" || path == "/healthz":
+			return events.APIGatewayV2HTTPResponse{StatusCode: 200, Body: "truner " + cp.Env.Version + " ok"}
+		case strings.HasSuffix(path, "/github/setup"):
+			return cp.setupPage(ctx, req, path)
+		case strings.HasSuffix(path, "/github/callback"):
+			return cp.setupCallback(ctx, req)
+		case strings.HasSuffix(path, "/github/installed"):
+			return installedPage()
+		}
 	}
 	if req.RequestContext.HTTP.Method != "POST" || !strings.HasSuffix(path, "/webhook") {
 		return events.APIGatewayV2HTTPResponse{StatusCode: 404, Body: "not found"}
@@ -140,6 +156,17 @@ func (cp *ControlPlane) handleAdmin(ctx context.Context, req AdminRequest) Admin
 			return fail(err)
 		}
 		return AdminResponse{OK: true, Message: "janitor run complete", Version: cp.Env.Version}
+	case "github-setup":
+		if err := cp.StartAppSetup(ctx, req.State, req.Owner, req.AppName, req.Replace); err != nil {
+			return fail(err)
+		}
+		return AdminResponse{OK: true, Version: cp.Env.Version}
+	case "github-setup-status":
+		st, err := cp.AppSetupStatus(ctx, req.State)
+		if err != nil {
+			return fail(err)
+		}
+		return AdminResponse{OK: true, Version: cp.Env.Version, Setup: st}
 	case "mirror-runner":
 		if err := cp.MirrorRunner(ctx, true); err != nil {
 			return fail(err)

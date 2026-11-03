@@ -241,7 +241,7 @@ func (a *app) doctor(ctx context.Context) error {
 		return summary(u, problems)
 	}
 	u.ok("app %s (%s)", info.Name, info.HTMLURL)
-	for perm, want := range appPermissions {
+	for perm, want := range controlplane.AppPermissions {
 		if have := info.Permissions[perm]; have != want && !(want == "read" && have == "write") {
 			bad("app permission %s is %q, needs %q (edit the app's permissions on GitHub)", perm, have, want)
 		}

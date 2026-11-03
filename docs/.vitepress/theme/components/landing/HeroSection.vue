@@ -3,7 +3,7 @@ import { withBase } from 'vitepress'
 import InstallCommand from './InstallCommand.vue'
 import TerminalWindow from './TerminalWindow.vue'
 
-type Line = { kind: 'step' | 'ok' | 'info' | 'ready'; text: string; dim?: string; pause?: number }
+type Line = { kind: 'step' | 'ok' | 'info' | 'action' | 'link' | 'ready'; text: string; dim?: string; pause?: number }
 
 // What `truner install` prints (internal/cli/install.go), with example values.
 const lines: Line[] = [
@@ -18,7 +18,9 @@ const lines: Line[] = [
   { kind: 'info', text: 'Deploying CloudFormation stack "truner" (takes 2-4 minutes)...' },
   { kind: 'ok', text: 'Control plane ready in 3m04s', pause: 900 },
   { kind: 'step', text: '[4/5] GitHub App', pause: 250 },
-  { kind: 'ok', text: 'Created GitHub App truner-acme', pause: 500 },
+  { kind: 'action', text: 'Open this link, click "Create GitHub App", then choose the repositories that should use truner:' },
+  { kind: 'link', text: 'https://a1b2c3.execute-api.us-east-1.amazonaws.com/github/setup?state=…' },
+  { kind: 'ok', text: 'Created GitHub App truner-acme (owned by acme)', pause: 900 },
   { kind: 'ok', text: 'Installed on acme (all repositories)', pause: 500 },
   { kind: 'step', text: '[5/5] Finishing', pause: 250 },
   { kind: 'ok', text: 'Control plane is healthy (version v0.1.0)' },
@@ -88,6 +90,7 @@ const proof = ['≈ $0 while idle', 'x64 · Arm64 · GPU · Windows', 'No licens
           >
             <template v-if="l.kind === 'ok'"><span class="check">✓</span> {{ l.text }}<span v-if="l.dim" class="dim">{{ l.dim }}</span></template>
             <template v-else-if="l.kind === 'step'"><span class="num">{{ l.text.slice(0, 5) }}</span> <b>{{ l.text.slice(6) }}</b></template>
+            <template v-else-if="l.kind === 'action'"><b class="action">ACTION REQUIRED</b> {{ l.text }}</template>
             <template v-else>{{ l.text }}</template>
           </div>
         </TerminalWindow>
@@ -250,7 +253,7 @@ h1 span {
 
 /* Terminal replay */
 .demo :deep(.term-body) {
-  min-height: 452px;
+  min-height: 520px;
 }
 
 .cmd {
@@ -289,8 +292,19 @@ h1 span {
 }
 
 .ln.ok,
-.ln.info {
+.ln.info,
+.ln.action,
+.ln.link {
   margin-left: 1.2em;
+}
+
+.action {
+  color: var(--tl-term-yellow);
+}
+
+.ln.link {
+  color: var(--tl-term-cyan);
+  word-break: break-all;
 }
 
 .num {

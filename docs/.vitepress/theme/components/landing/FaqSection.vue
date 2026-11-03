@@ -7,6 +7,10 @@ const faqs = [
     a: 'An AWS account where you can create resources (administrator access for the install) and a GitHub organization or personal account. Then run `truner install`, which asks for AWS keys if none are configured, deploys the stack and walks you through creating the GitHub App in your browser.',
   },
   {
+    q: 'Can an AI agent install it for me?',
+    a: 'Yes. Give Claude Code, Codex, Cursor or another agent that can run commands the prompt from the AI agent tab above. It installs the CLI, deploys the stack and checks the result. You click "Create GitHub App" and "Install" on GitHub, and if needed you type an AWS access key into `truner login` in your own terminal. Agents can also read the docs as Markdown, starting at `/llms.txt`.',
+  },
+  {
     q: 'How fast does a job start?',
     a: 'Most of the time goes to EC2 booting the machine. Baked images skip software installation at boot, and warm pools skip the cold boot entirely. The first job on a new image is slower while its optimized image is being built. Every job log shows the boot timings.',
   },

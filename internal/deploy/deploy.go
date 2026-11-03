@@ -145,18 +145,24 @@ func Deploy(ctx context.Context, cfg aws.Config, name, templateURL string, param
 	if err != nil && !errors.Is(err, ErrNoStack) {
 		return nil, err
 	}
+	// An interrupted earlier run (Ctrl-C, or an AI agent's command timeout)
+	// can leave an operation running: wait for it, then look again, because
+	// a failed create deletes the stack.
+	if cur != nil && strings.HasSuffix(cur.Status, "_IN_PROGRESS") {
+		fmt.Fprintf(w, "Waiting for the current stack operation (%s) to finish...\n", cur.Status)
+		if _, err := wait(ctx, cf, name, time.Now().Add(-time.Minute), w); err != nil {
+			return nil, err
+		}
+		if cur, err = Describe(ctx, cfg, name); err != nil && !errors.Is(err, ErrNoStack) {
+			return nil, err
+		}
+	}
 	if cur != nil && (cur.Status == "ROLLBACK_COMPLETE" || cur.Status == "DELETE_COMPLETE") {
 		fmt.Fprintf(w, "Removing failed previous attempt (%s)...\n", cur.Status)
 		if err := Delete(ctx, cfg, name, w); err != nil {
 			return nil, err
 		}
 		cur = nil
-	}
-	if cur != nil && strings.HasSuffix(cur.Status, "_IN_PROGRESS") {
-		fmt.Fprintf(w, "Waiting for the current stack operation (%s) to finish...\n", cur.Status)
-		if _, err := wait(ctx, cf, name, time.Now().Add(-time.Minute), w); err != nil {
-			return nil, err
-		}
 	}
 	keys := make([]string, 0, len(params))
 	for k := range params {

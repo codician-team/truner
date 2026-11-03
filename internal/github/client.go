@@ -499,6 +499,9 @@ func ConvertManifest(ctx context.Context, baseURL, code string) (*AppCredentials
 	c := &Client{BaseURL: baseURL, HTTP: &http.Client{Timeout: 30 * time.Second}}
 	if c.BaseURL == "" {
 		c.BaseURL = DefaultAPI
+		if v := os.Getenv("TRUNER_GITHUB_API"); v != "" {
+			c.BaseURL = v
+		}
 	}
 	var out struct {
 		ID            int64  `json:"id"`

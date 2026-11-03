@@ -4,6 +4,7 @@ These pages are also published as the documentation website (built with
 [VitePress](https://vitepress.dev) from this folder).
 
 - [Getting started](getting-started.md)
+- [Install with an AI agent](ai-agents.md)
 - [FAQ](faq.md)
 - [Labels](labels.md)
 - [Configuration](configuration.md)

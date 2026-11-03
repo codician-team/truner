@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -16,7 +15,6 @@ import (
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/servicequotas"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
-	ssmtypes "github.com/aws/aws-sdk-go-v2/service/ssm/types"
 	"github.com/spf13/cobra"
 
 	"github.com/codician-team/truner/internal/assets"
@@ -59,7 +57,13 @@ nothing while idle) into your AWS account, creates a private GitHub App
 for your organization or account, and connects the two.
 
 Running it again on an existing installation upgrades it and applies any
-changed options.`,
+changed options.
+
+Scripts and AI agents: pass --region and --github-owner (omit it for a
+personal account) and run with --yes. The command never prompts without a
+terminal. Lines starting with "ACTION REQUIRED" contain a link the user has
+to open. If the command is interrupted, run it again: it continues where it
+stopped and reuses a pending GitHub link.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.install(cmd.Context(), f, cmd)
 		},
@@ -203,7 +207,9 @@ func (a *app) install(ctx context.Context, f *installFlags, cmd *cobra.Command) 
 		return err
 	}
 	u.ok("Control plane ready in %s", dur(time.Since(start)))
-	saveState(state{Stack: a.stack, Region: cfg.Region, Profile: a.aws.Profile})
+	saved := loadState()
+	saved.Stack, saved.Region, saved.Profile = a.stack, cfg.Region, a.aws.Profile
+	saveState(saved)
 	e := &env{cfg: cfg, name: a.stack, stack: st}
 	webhookURL := st.Outputs["WebhookUrl"]
 
@@ -224,25 +230,24 @@ func (a *app) install(ctx context.Context, f *installFlags, cmd *cobra.Command) 
 			gh = nil
 		}
 	}
+	created := false
 	if gh == nil || f.reconfigureApp {
 		owner := f.githubOwner
 		if !cmd.Flags().Changed("github-owner") {
 			owner = u.ask("GitHub organization to use truner with (empty for your personal account)", "")
 		}
-		creds, err := createApp(ctx, u, owner, a.stack, webhookURL)
+		setup, err := connectApp(ctx, u, e, owner, f.reconfigureApp)
 		if err != nil {
-			return fmt.Errorf("create GitHub App: %w", err)
+			return fmt.Errorf("GitHub App: %w", err)
 		}
-		if err := storeApp(ctx, e, creds); err != nil {
+		if gh, err = e.github(ctx); err != nil {
 			return err
 		}
-		if gh, err = github.New(creds); err != nil {
-			return err
-		}
-		u.ok("Created GitHub App %s", creds.Name)
+		u.ok("Created GitHub App %s (owned by %s)", setup.AppName, setup.AppOwner)
+		created = true
 	}
 	app := gh.App()
-	insts := waitForInstallation(ctx, u, gh, app.Slug)
+	insts := waitForInstallation(ctx, u, gh, app.Slug, !created)
 	if len(insts) == 0 {
 		u.warn("the app is not installed yet; install it later at https://github.com/apps/%s/installations/new", app.Slug)
 	}
@@ -281,23 +286,6 @@ func (a *app) install(ctx context.Context, f *installFlags, cmd *cobra.Command) 
 	u.printf("              %s/image=ubuntu24-full       %s/runner=gpu-nvidia   %s/runner=4cpu-windows-x64\n\n", prefix, prefix, prefix)
 	u.printf("Next:  truner doctor   (verify everything)    truner status   truner jobs   truner costs\n")
 	u.printf("Docs:  https://github.com/%s#readme\n", version.Repo)
-	return nil
-}
-
-func storeApp(ctx context.Context, e *env, creds *github.AppCredentials) error {
-	data, _ := json.Marshal(creds)
-	name := firstNonEmpty(e.out("AppParameter"), "/truner/"+e.name+"/github-app")
-	tier := ssmtypes.ParameterTierStandard
-	if len(data) > 4000 {
-		tier = ssmtypes.ParameterTierAdvanced
-	}
-	_, err := ssm.NewFromConfig(e.cfg).PutParameter(ctx, &ssm.PutParameterInput{
-		Name: &name, Value: aws.String(string(data)), Type: ssmtypes.ParameterTypeSecureString, Overwrite: aws.Bool(true), Tier: tier,
-		Description: aws.String("truner GitHub App credentials"),
-	})
-	if err != nil {
-		return fmt.Errorf("store GitHub App credentials: %w", err)
-	}
 	return nil
 }
 

@@ -43,6 +43,14 @@ it. On `in_progress` it records which machine took the job. On `completed` it co
 job's cost from the machine's price and runtime, updates the monthly spend, and stops
 machines whose job was cancelled before they picked it up.
 
+The same function serves the GitHub App setup during `truner install`. The CLI
+registers a pending setup with a random, single-use state, valid for an hour.
+`/github/setup` posts the app manifest to GitHub. GitHub redirects to `/github/callback`,
+where the code is exchanged for the app's credentials, which are stored in SSM. The
+browser then continues to the app's installation page. Nothing has to run on the user's
+machine during these steps, so the link can be opened on any device and an interrupted
+install can continue.
+
 **Worker function** (SQS → Lambda). Applies access rules, the instance limit and the
 budget. Resolves the spec, claims a warm pool machine or resolves the AMI, registers a
 just-in-time runner and launches with EC2 Fleet in `instant` mode. A per-job launch

@@ -34,6 +34,7 @@ jobs:
         working-directory: docs
         env:
           DOCS_BASE: ${{ format('{0}/', steps.pages.outputs.base_path) }}
+          DOCS_URL: ${{ steps.pages.outputs.base_url }}
         run: |
           npm ci
           npm run build

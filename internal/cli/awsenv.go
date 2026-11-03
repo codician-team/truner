@@ -21,6 +21,14 @@ type state struct {
 	Stack   string `json:"stack,omitempty"`
 	Region  string `json:"region,omitempty"`
 	Profile string `json:"profile,omitempty"`
+	// Setups are GitHub App setup links still waiting for the user, by "region/stack".
+	Setups map[string]pendingSetup `json:"setups,omitempty"`
+}
+
+type pendingSetup struct {
+	State   string `json:"state"`
+	Owner   string `json:"owner,omitempty"`
+	Replace bool   `json:"replace,omitempty"`
 }
 
 func statePath() string {
@@ -104,15 +112,31 @@ func awsInteractive(ctx context.Context, u *ui, o awsOptions, askRegion bool) (a
 		if id, err := whoami(ctx, cfg); err == nil {
 			return cfg, id, o, nil
 		} else if !u.tty || u.yes {
-			return aws.Config{}, nil, o, fmt.Errorf("AWS credentials are not working: %w", err)
+			if strings.Contains(err.Error(), "get credentials") {
+				return aws.Config{}, nil, o, errors.New("no AWS credentials found.\n" + loginHint)
+			}
+			return aws.Config{}, nil, o, fmt.Errorf("AWS credentials are not working (%w).\n%s", err, loginHint)
 		}
 	}
 	if !u.tty {
-		return aws.Config{}, nil, o, errors.New("no AWS credentials found; set AWS_PROFILE or AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY")
+		return aws.Config{}, nil, o, errors.New("no AWS credentials found.\n" + loginHint)
 	}
 	u.println()
-	u.info("No working AWS credentials were found. Paste an access key of an IAM user")
-	u.info("with administrator access to the account truner should run in.")
+	u.info("No working AWS credentials were found.")
+	return promptAccessKey(ctx, u, o, false)
+}
+
+// loginHint is printed when a non-interactive run (a script or an AI agent)
+// has no AWS credentials. The secret key should be typed by the user, never
+// passed through the agent.
+const loginHint = "ACTION REQUIRED: run `truner login` in your own terminal to enter an AWS access key\n" +
+	"(or set up the AWS CLI with `aws configure` or `aws sso login`), then run this command again."
+
+// promptAccessKey asks for an access key until one works. With save the key
+// is stored as the "truner" profile without asking.
+func promptAccessKey(ctx context.Context, u *ui, o awsOptions, save bool) (aws.Config, *identity, awsOptions, error) {
+	u.info("Paste an access key of an IAM user with administrator access to the account")
+	u.info("truner should run in.")
 	u.info("%s", u.dim("(Create one in the AWS console: IAM > Users > Create user > Security credentials.)"))
 	for attempt := 0; attempt < 3; attempt++ {
 		keyID := u.ask("AWS Access Key ID", "")
@@ -140,7 +164,7 @@ func awsInteractive(ctx context.Context, u *ui, o awsOptions, askRegion bool) (a
 			continue
 		}
 		o.Region = region
-		if u.confirm("Save these credentials as AWS profile \"truner\" for future commands?", true) {
+		if save || u.confirm("Save these credentials as AWS profile \"truner\" for future commands?", true) {
 			if err := saveProfile("truner", keyID, secret, token, region); err != nil {
 				u.warn("could not save the profile: %v", err)
 			} else {

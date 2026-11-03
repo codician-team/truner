@@ -68,6 +68,29 @@ func (u *ui) bad(format string, a ...any) {
 }
 func (u *ui) info(format string, a ...any) { u.printf("  %s\n", fmt.Sprintf(format, a...)) }
 
+// action tells the user, or the AI agent relaying for them, what to do next.
+// Agents look for the fixed "ACTION REQUIRED" prefix.
+func (u *ui) action(msg, link string) {
+	u.printf("\n  %s %s\n", u.yellow(u.bold("ACTION REQUIRED")), msg)
+	if link != "" {
+		u.printf("  %s\n\n", u.cyan(link))
+	}
+}
+
+// heartbeat returns a function that prints a progress line at most once a
+// minute when there is no spinner (logs, scripts, AI agents), so long waits
+// do not look like a hang.
+func (u *ui) heartbeat() func(msg string) {
+	start, last := time.Now(), time.Now()
+	return func(msg string) {
+		if u.color || time.Since(last) < time.Minute {
+			return
+		}
+		last = time.Now()
+		u.info("still %s (%s)", msg, dur(time.Since(start)))
+	}
+}
+
 // ask prompts for a line of input, returning def when empty.
 func (u *ui) ask(prompt, def string) string {
 	if !u.tty || u.yes {

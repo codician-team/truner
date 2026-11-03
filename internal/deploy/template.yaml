@@ -523,9 +523,13 @@ Resources:
                 Resource:
                   - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/truner/${AWS::StackName}/*"
                   - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}::parameter/aws/service/*"
-              - Sid: DecryptParameters
+              - Sid: StoreAppCredentials
                 Effect: Allow
-                Action: kms:Decrypt
+                Action: [ssm:PutParameter]
+                Resource: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/truner/${AWS::StackName}/github-app"
+              - Sid: ParameterEncryption
+                Effect: Allow
+                Action: [kms:Decrypt, kms:Encrypt, kms:GenerateDataKey]
                 Resource: "*"
                 Condition:
                   StringEquals: { "kms:ViaService": !Sub "ssm.${AWS::Region}.amazonaws.com" }

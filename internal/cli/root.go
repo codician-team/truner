@@ -64,7 +64,7 @@ Get started:  truner install`,
 		a.statusCmd(), a.doctorCmd(),
 		a.jobsCmd(), a.costsCmd(), a.logsCmd(), a.explainCmd(),
 		a.imagesCmd(), a.cacheCmd(), a.configCmd(), a.poolsCmd(),
-		a.connectCmd(), a.quotaCmd(), a.githubCmd(), a.versionCmd(),
+		a.connectCmd(), a.quotaCmd(), a.githubCmd(), a.loginCmd(), a.versionCmd(),
 	)
 	if err := root.ExecuteContext(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "Error:", err)

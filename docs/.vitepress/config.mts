@@ -1,5 +1,6 @@
-import { readFileSync } from 'node:fs'
-import { defineConfig } from 'vitepress'
+import { readFileSync, writeFileSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
+import { defineConfig, type DefaultTheme } from 'vitepress'
 
 const repo = 'https://github.com/codician-team/truner'
 
@@ -8,8 +9,105 @@ const version =
   readFileSync(new URL('../../CHANGELOG.md', import.meta.url), 'utf8').match(/^## (v\S+)/m)?.[1] ?? 'releases'
 
 // GitHub Pages serves project sites from /<repository>/. The Pages workflow sets
-// DOCS_BASE; a custom domain or local preview uses the root.
+// DOCS_BASE and DOCS_URL; a custom domain or local preview uses the root.
 const base = process.env.DOCS_BASE || '/'
+const siteUrl = (process.env.DOCS_URL || 'https://codician-team.github.io/truner').replace(/\/$/, '')
+
+const sidebar: DefaultTheme.SidebarItem[] = [
+  {
+    text: 'Introduction',
+    items: [
+      { text: 'Getting started', link: '/getting-started' },
+      { text: 'Install with an AI agent', link: '/ai-agents' },
+      { text: 'FAQ', link: '/faq' },
+    ],
+  },
+  {
+    text: 'Using truner',
+    items: [
+      { text: 'Labels', link: '/labels' },
+      { text: 'Configuration', link: '/configuration' },
+      { text: 'Caching', link: '/caching' },
+      { text: 'Images', link: '/images' },
+      { text: 'Warm pools', link: '/pools' },
+      { text: 'Networking and access', link: '/networking' },
+    ],
+  },
+  {
+    text: 'Operating',
+    items: [
+      { text: 'CLI reference', link: '/cli' },
+      { text: 'Costs and limits', link: '/costs' },
+      { text: 'Troubleshooting', link: '/troubleshooting' },
+      { text: 'Security', link: '/security' },
+    ],
+  },
+  {
+    text: 'Internals',
+    items: [
+      { text: 'Architecture', link: '/architecture' },
+      { text: 'Publishing (maintainers)', link: '/publishing' },
+    ],
+  },
+]
+
+// One line per page, for search engines and the llms.txt index.
+const descriptions: Record<string, string> = {
+  '/getting-started': 'Install the CLI, deploy truner to an AWS account and run the first job.',
+  '/ai-agents': 'Step-by-step instructions for an AI agent that installs truner for a user.',
+  '/faq': 'How truner compares with GitHub-hosted and self-hosted runners, start times, spot interruptions and security.',
+  '/labels': 'The runs-on label syntax: CPU, memory, architecture, GPU, image, disk and spot settings, and built-in runner profiles.',
+  '/configuration': 'Repository (.github/truner.yml) and account-wide configuration: defaults, runner profiles, images, pools, access and limits.',
+  '/caching': 'The S3-backed magic cache for actions/cache and setup-* actions, Docker layer caching and local NVMe.',
+  '/images': 'Built-in Ubuntu, GPU and Windows images, automatically baked AMIs and custom images.',
+  '/pools': 'Warm pools of stopped, prepared machines for faster job starts.',
+  '/networking': 'VPC options, a static egress IP, debug access over SSM or SSH, and AWS permissions for jobs.',
+  '/cli': 'Every truner command and flag.',
+  '/costs': 'What truner costs, how to see spend, and budgets, limits and alerts.',
+  '/troubleshooting': 'Fixing queued jobs, slow starts and cache misses, and where to find logs.',
+  '/security': 'The security model and how to report vulnerabilities.',
+  '/architecture': 'How the control plane, agent and CLI work, the job lifecycle and failure handling.',
+  '/publishing': 'Releasing truner and publishing it under another GitHub owner.',
+}
+
+// Markdown source of a page as an agent should read it: includes resolved,
+// front matter removed.
+function pageMarkdown(srcDir: string, file: string): string {
+  const text = readFileSync(join(srcDir, file), 'utf8')
+    .replace(/<!--@include:\s*(.+?)\s*-->/g, (_, p) => readFileSync(resolve(srcDir, dirname(file), p), 'utf8'))
+    .replace(/^---\n[\s\S]*?\n---\n/, '')
+  return text.trim() + '\n'
+}
+
+// Agent-readable docs (https://llmstxt.org): /llms.txt indexes the pages,
+// /llms-full.txt holds all of them, and every page is also served as Markdown
+// next to its HTML (/labels.md beside /labels).
+function writeAgentFiles(srcDir: string, outDir: string) {
+  const index = [
+    '# truner',
+    '',
+    '> Fast, cheap, ephemeral GitHub Actions runners in your own AWS account. Every job gets a fresh EC2',
+    '> machine (spot with on-demand fallback), caches go to S3 with no size limit, and a serverless',
+    '> control plane costs close to nothing while idle. Open source (MIT), installed with one CLI command.',
+    '',
+    `If you are an AI agent asked to install truner, follow [Install with an AI agent](${siteUrl}/ai-agents.md).`,
+    `To change a workflow, read [Labels](${siteUrl}/labels.md). Source code: ${repo}`,
+  ]
+  const full: string[] = []
+  for (const group of sidebar) {
+    index.push('', `## ${group.text}`, '')
+    for (const item of group.items ?? []) {
+      const file = item.link!.slice(1) + '.md'
+      const md = pageMarkdown(srcDir, file)
+      writeFileSync(join(outDir, file), md)
+      index.push(`- [${item.text}](${siteUrl}/${file}): ${descriptions[item.link!]}`)
+      full.push(`<!-- ${siteUrl}/${file} -->\n\n${md}`)
+    }
+  }
+  index.push('', '## Optional', '', `- [All pages in one file](${siteUrl}/llms-full.txt)`, '')
+  writeFileSync(join(outDir, 'llms.txt'), index.join('\n'))
+  writeFileSync(join(outDir, 'llms-full.txt'), full.join('\n\n'))
+}
 
 export default defineConfig({
   title: 'truner',
@@ -48,42 +146,7 @@ export default defineConfig({
         ],
       },
     ],
-    sidebar: [
-      {
-        text: 'Introduction',
-        items: [
-          { text: 'Getting started', link: '/getting-started' },
-          { text: 'FAQ', link: '/faq' },
-        ],
-      },
-      {
-        text: 'Using truner',
-        items: [
-          { text: 'Labels', link: '/labels' },
-          { text: 'Configuration', link: '/configuration' },
-          { text: 'Caching', link: '/caching' },
-          { text: 'Images', link: '/images' },
-          { text: 'Warm pools', link: '/pools' },
-          { text: 'Networking and access', link: '/networking' },
-        ],
-      },
-      {
-        text: 'Operating',
-        items: [
-          { text: 'CLI reference', link: '/cli' },
-          { text: 'Costs and limits', link: '/costs' },
-          { text: 'Troubleshooting', link: '/troubleshooting' },
-          { text: 'Security', link: '/security' },
-        ],
-      },
-      {
-        text: 'Internals',
-        items: [
-          { text: 'Architecture', link: '/architecture' },
-          { text: 'Publishing (maintainers)', link: '/publishing' },
-        ],
-      },
-    ],
+    sidebar,
     socialLinks: [{ icon: 'github', link: repo }],
     search: { provider: 'local' },
     editLink: { pattern: `${repo}/edit/main/docs/:path`, text: 'Edit this page on GitHub' },
@@ -92,6 +155,21 @@ export default defineConfig({
       message: 'Released under the MIT License.',
       copyright: 'Not affiliated with GitHub or Amazon Web Services.',
     },
+  },
+
+  transformPageData(pageData) {
+    const desc = descriptions['/' + pageData.relativePath.replace(/\.md$/, '')]
+    if (desc && !pageData.frontmatter.description) {
+      pageData.description = desc
+    }
+  },
+  // Point agents that fetch a page's HTML at its Markdown copy.
+  transformHead({ pageData }) {
+    const href = pageData.relativePath === 'index.md' ? `${base}llms.txt` : `${base}${pageData.relativePath}`
+    return [['link', { rel: 'alternate', type: 'text/markdown', href }]]
+  },
+  buildEnd(site) {
+    writeAgentFiles(site.srcDir, site.outDir)
   },
 
   // Mermaid's chunks are large but only load on pages with diagrams.

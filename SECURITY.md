@@ -36,6 +36,12 @@ repository B. Therefore:
   wrongly signed requests are rejected before any processing.
 - The GitHub App's private key and webhook secret are stored as an SSM SecureString
   (KMS-encrypted) and only readable by the control plane role.
+- The GitHub App is created through the control plane's `/github/setup` and
+  `/github/callback` pages. They only work with a random 192-bit state that the CLI
+  registers. Only its hash is stored, it is valid for one hour and it works once. The
+  callback refuses an app that belongs to a different GitHub owner than the one requested,
+  and it never replaces stored credentials unless `--new-github-app` was given. Treat the
+  setup link like a password until it has been used.
 - The control plane role can launch instances with the runner role only (`iam:PassRole`
   is scoped to it). Destructive EC2 actions (terminate, stop, modify, deregister,
   delete) are limited to resources tagged with the installation's name.

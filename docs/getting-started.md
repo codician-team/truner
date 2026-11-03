@@ -3,12 +3,17 @@
 truner runs every GitHub Actions job on a fresh EC2 machine in your own AWS account.
 This page takes you from nothing to a first job, which takes about five minutes.
 
+::: tip Let an AI agent do it
+Claude Code, Codex, Cursor and other coding agents can run all of these steps for you.
+Copy the prompt from [Install with an AI agent](ai-agents.md).
+:::
+
 ## What you need
 
 - An **AWS account**. The installer needs administrator access. Day-to-day commands
   need much less.
 - A **GitHub organization or personal account** on github.com.
-- A computer with a browser to create the GitHub App. The installer opens it for you.
+- A browser on any device, for two clicks on GitHub.
 
 You don't need Go, Node.js, Terraform or the AWS CLI. The `truner` binary contains
 everything it deploys.
@@ -41,14 +46,16 @@ The installer walks through five steps:
 
 1. **AWS account.** It uses your current AWS profile or environment variables. If it
    finds no working credentials, it asks you to paste an access key and can save it as
-   the AWS profile `truner`.
+   the AWS profile `truner`. (`truner login` does only this step.)
 2. **Preflight checks.** It checks the region's availability zones and your EC2 vCPU
    quotas.
 3. **Control plane.** It uploads the Lambda package and agent to an artifacts bucket and
    deploys a CloudFormation stack, which takes 2–4 minutes.
-4. **GitHub App.** It opens your browser to create a private GitHub App with one click,
-   then to install it on the repositories you choose. The app's credentials are stored
-   encrypted in SSM Parameter Store.
+4. **GitHub App.** It prints a link (and opens it in your browser) where you create a
+   private GitHub App with one click and then install it on the repositories you choose.
+   The page is served by your new control plane, so the link works on any device. The
+   app's credentials go straight into SSM Parameter Store in your account, encrypted.
+   If the installer stops while it waits, run it again: it continues with the same link.
 5. **Finishing.** It checks the control plane's health and starts building optimized
    Ubuntu images in the background. Jobs work right away and start faster once the images
    are ready.

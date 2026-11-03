@@ -8,10 +8,11 @@ const columns = [
     title: 'Docs',
     links: [
       ['Getting started', '/getting-started'],
+      ['Install with an AI agent', '/ai-agents'],
       ['Labels', '/labels'],
-      ['Caching', '/caching'],
       ['CLI reference', '/cli'],
       ['Troubleshooting', '/troubleshooting'],
+      ['llms.txt', '/llms.txt'],
     ],
   },
   {

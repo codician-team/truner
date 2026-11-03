@@ -45,3 +45,51 @@ func TestAppName(t *testing.T) {
 		t.Errorf("personal accounts get a random suffix: %q", n)
 	}
 }
+
+// isolateAWS points the AWS SDK and truner's state at empty files.
+func isolateAWS(t *testing.T) {
+	dir := t.TempDir()
+	for _, f := range []string{"credentials", "config"} {
+		os.WriteFile(filepath.Join(dir, f), nil, 0o600)
+	}
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
+	t.Setenv("AWS_SHARED_CREDENTIALS_FILE", filepath.Join(dir, "credentials"))
+	t.Setenv("AWS_CONFIG_FILE", filepath.Join(dir, "config"))
+	t.Setenv("AWS_EC2_METADATA_DISABLED", "true")
+	for _, k := range []string{"AWS_PROFILE", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AWS_REGION", "AWS_DEFAULT_REGION"} {
+		t.Setenv(k, "")
+	}
+}
+
+func TestNoCredentialsWithoutTerminal(t *testing.T) {
+	isolateAWS(t)
+	var out strings.Builder
+	u := &ui{out: &out}
+	_, _, _, err := awsInteractive(t.Context(), u, awsOptions{Region: "us-east-1"}, false)
+	if err == nil || !strings.Contains(err.Error(), "ACTION REQUIRED: run `truner login`") {
+		t.Fatalf("err = %v", err)
+	}
+	if out.Len() != 0 {
+		t.Fatalf("a run without a terminal must not prompt, printed %q", out.String())
+	}
+}
+
+func TestStateKeepsPendingSetups(t *testing.T) {
+	isolateAWS(t)
+	st := loadState()
+	st.Setups = map[string]pendingSetup{"us-east-1/truner": {State: "abc", Owner: "acme"}}
+	if err := saveState(st); err != nil {
+		t.Fatal(err)
+	}
+	st = loadState()
+	st.Stack, st.Region = "truner", "us-east-1"
+	saveState(st)
+	if got := loadState().Setups["us-east-1/truner"]; got.State != "abc" || got.Owner != "acme" {
+		t.Fatalf("pending setup lost: %+v", got)
+	}
+	forgetSetup("us-east-1/truner")
+	if len(loadState().Setups) != 0 {
+		t.Fatal("forgetSetup did not remove the setup")
+	}
+}
