@@ -98,6 +98,8 @@ func (a *Agent) osConfigureDocker(ctx context.Context) error { return nil }
 
 func (a *Agent) osRunnerDir() string { return `C:\actions-runner` }
 
+func (a *Agent) osRunnerDeps(ctx context.Context, dir string) {}
+
 func (a *Agent) osRunnerCommand(dir string, env []string) *exec.Cmd {
 	cmd := exec.Command(filepath.Join(dir, "run.cmd"), "--jitconfig", a.Cfg.JITConfig)
 	cmd.Dir = dir

@@ -170,11 +170,18 @@ func Deploy(ctx context.Context, cfg aws.Config, name, templateURL string, param
 	tags := []cftypes.Tag{{Key: aws.String("truner:managed"), Value: aws.String("true")}, {Key: aws.String("truner:stack"), Value: aws.String(name)}}
 	caps := []cftypes.Capability{cftypes.CapabilityCapabilityIam, cftypes.CapabilityCapabilityNamedIam}
 	started := time.Now().Add(-5 * time.Second)
+	// Track the stack by id: after a failed create (OnFailure: DELETE) the
+	// name no longer resolves, but the id still shows what went wrong.
+	stackID := name
 	if cur == nil {
-		_, err = cf.CreateStack(ctx, &cloudformation.CreateStackInput{
+		var out *cloudformation.CreateStackOutput
+		out, err = cf.CreateStack(ctx, &cloudformation.CreateStackInput{
 			StackName: &name, TemplateURL: &templateURL, Parameters: cfParams, Capabilities: caps, Tags: tags,
 			OnFailure: cftypes.OnFailureDelete, EnableTerminationProtection: aws.Bool(false),
 		})
+		if err == nil {
+			stackID = aws.ToString(out.StackId)
+		}
 	} else {
 		for _, p := range templateParameters() {
 			if _, ok := params[p]; !ok {
@@ -183,9 +190,13 @@ func Deploy(ctx context.Context, cfg aws.Config, name, templateURL string, param
 				}
 			}
 		}
-		_, err = cf.UpdateStack(ctx, &cloudformation.UpdateStackInput{
+		var out *cloudformation.UpdateStackOutput
+		out, err = cf.UpdateStack(ctx, &cloudformation.UpdateStackInput{
 			StackName: &name, TemplateURL: &templateURL, Parameters: cfParams, Capabilities: caps, Tags: tags,
 		})
+		if err == nil {
+			stackID = aws.ToString(out.StackId)
+		}
 		if err != nil && strings.Contains(err.Error(), "No updates are to be performed") {
 			fmt.Fprintln(w, "Stack is already up to date.")
 			return Describe(ctx, cfg, name)
@@ -194,12 +205,12 @@ func Deploy(ctx context.Context, cfg aws.Config, name, templateURL string, param
 	if err != nil {
 		return nil, err
 	}
-	status, err := wait(ctx, cf, name, started, w)
+	status, err := wait(ctx, cf, stackID, started, w)
 	if err != nil {
 		return nil, err
 	}
 	if status != "CREATE_COMPLETE" && status != "UPDATE_COMPLETE" {
-		reason := failureReason(ctx, cf, name, started)
+		reason := failureReason(ctx, cf, stackID, started)
 		return nil, fmt.Errorf("stack ended in %s: %s", status, reason)
 	}
 	return Describe(ctx, cfg, name)

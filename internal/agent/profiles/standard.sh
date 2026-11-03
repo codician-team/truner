@@ -45,7 +45,7 @@ fi
 aptget ca-certificates curl wget gnupg git git-lfs jq unzip zip xz-utils zstd pigz \
   build-essential pkg-config python3 python3-pip python3-venv rsync openssh-client sudo acl file \
   time tree lsb-release apt-transport-https software-properties-common bc dnsutils iputils-ping \
-  net-tools mdadm nvme-cli parallel tzdata locales gettext-base libssl-dev libffi-dev
+  net-tools mdadm nvme-cli parallel tzdata locales gettext-base libssl-dev libffi-dev libicu-dev
 
 if ! command -v docker >/dev/null 2>&1; then
   "${APT[@]}" install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin \
@@ -88,6 +88,9 @@ fs.inotify.max_user_instances = 1280
 fs.file-max = 2097152
 vm.max_map_count = 262144
 net.core.somaxconn = 4096
+# Allow unprivileged user namespaces (Chrome/Playwright sandboxes, rootless
+# containers), as on GitHub-hosted runners. Ignored on kernels without it.
+kernel.apparmor_restrict_unprivileged_userns = 0
 EOF
 sysctl --system >/dev/null 2>&1 || true
 

@@ -187,9 +187,12 @@ func (a *Agent) osSetupStorage(ctx context.Context) (string, error) {
 	work := filepath.Join(mnt, "work")
 	os.MkdirAll(work, 0o775)
 	os.Chown(work, uid, gid)
-	home := filepath.Join(u.HomeDir, "work")
-	os.MkdirAll(home, 0o775)
-	if err := a.sh(ctx, "mount", "--bind", work, home); err != nil {
+	// The runner's work folder (_work, from the JIT registration) holds the
+	// checkouts and build outputs.
+	target := filepath.Join(a.osRunnerDir(), "_work")
+	os.MkdirAll(target, 0o775)
+	os.Chown(target, uid, gid)
+	if err := a.sh(ctx, "mount", "--bind", work, target); err != nil {
 		return "", err
 	}
 	tmp := filepath.Join(mnt, "tmp")
@@ -250,6 +253,21 @@ func (a *Agent) osConfigureDocker(ctx context.Context) error {
 }
 
 func (a *Agent) osRunnerDir() string { return filepath.Join(a.homeDir(), "actions-runner") }
+
+// osRunnerDeps installs the runner's native dependencies (ICU, Kerberos,
+// LTTng) when the image lacks them, using the runner's own script.
+func (a *Agent) osRunnerDeps(ctx context.Context, dir string) {
+	out, _ := exec.CommandContext(ctx, "ldconfig", "-p").Output()
+	if strings.Contains(string(out), "libicuuc") {
+		return
+	}
+	a.Log.Info("installing runner dependencies (ICU missing)")
+	cmd := exec.CommandContext(ctx, "bash", filepath.Join(dir, "bin", "installdependencies.sh"))
+	cmd.Env = append(os.Environ(), "DEBIAN_FRONTEND=noninteractive")
+	if b, err := cmd.CombinedOutput(); err != nil {
+		a.warn("runner dependency install failed: " + strings.TrimSpace(tail(string(b), 500)))
+	}
+}
 
 func (a *Agent) osRunnerCommand(dir string, env []string) *exec.Cmd {
 	cmd := exec.Command(filepath.Join(dir, "run.sh"), "--jitconfig", a.Cfg.JITConfig)

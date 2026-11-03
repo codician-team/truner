@@ -178,7 +178,8 @@ func (cp *ControlPlane) launchForJob(ctx context.Context, job *Job) error {
 	if err != nil {
 		var ge *github.Error
 		if errors.As(err, &ge) && (ge.Status == 403 || ge.Status == 404) {
-			return fmt.Errorf("cannot register a runner on %s (does the GitHub App have Administration: write on this repo?): %w", job.FullName(), err)
+			return fmt.Errorf("cannot register a runner on %s: the GitHub App needs Administration: write on the repository, "+
+				"and the organization must allow repository-level self-hosted runners (Settings > Actions > Runners): %w", job.FullName(), err)
 		}
 		return &retryError{err: fmt.Errorf("generate runner config: %w", err), delay: backoff(job.Attempts)}
 	}

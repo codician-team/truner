@@ -610,7 +610,13 @@ func (s *Server) handleDownload(w http.ResponseWriter, r *http.Request, enc stri
 	}
 	off, length := int64(0), obj.Size
 	status := http.StatusOK
-	if rh := r.Header.Get("Range"); rh != "" {
+	// Azure SDK clients (e.g. BuildKit's gha cache) send x-ms-range instead of Range.
+	rh := r.Header.Get("x-ms-range")
+	if rh == "" {
+		rh = r.Header.Get("Range")
+	}
+	w.Header().Set("x-ms-blob-type", "BlockBlob")
+	if rh != "" {
 		a, b, ok := parseRange(rh, obj.Size)
 		if !ok {
 			w.Header().Set("Content-Range", fmt.Sprintf("bytes */%d", obj.Size))

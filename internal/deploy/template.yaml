@@ -78,7 +78,7 @@ Parameters:
 
 Conditions:
   CreateVpc: !Equals [!Ref NetworkMode, create]
-  ThreeAZ: !Equals [!Ref AvailabilityZoneCount, 3]
+  ThreeAZ: !Equals [!Ref AvailabilityZoneCount, "3"]
   CreateVpc3: !And [!Condition CreateVpc, !Condition ThreeAZ]
   CreateNat: !And [!Condition CreateVpc, !Equals [!Ref EnableNat, "true"]]
   CreateNat3: !And [!Condition CreateNat, !Condition ThreeAZ]
@@ -366,7 +366,6 @@ Resources:
     Type: AWS::SNS::Topic
     Properties:
       DisplayName: truner
-      KmsMasterKeyId: alias/aws/sns
 
   AlertSubscription:
     Type: AWS::SNS::Subscription

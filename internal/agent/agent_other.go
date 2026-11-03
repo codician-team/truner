@@ -41,7 +41,8 @@ func (a *Agent) osRunnerDir() string                                  { return f
 func (a *Agent) osRunnerCommand(dir string, env []string) *exec.Cmd {
 	return exec.Command(filepath.Join(dir, "run.sh"), "--jitconfig", a.Cfg.JITConfig)
 }
-func (a *Agent) osFinalizeFiles(dir string) error { return nil }
+func (a *Agent) osFinalizeFiles(dir string) error             { return nil }
+func (a *Agent) osRunnerDeps(ctx context.Context, dir string) {}
 func (a *Agent) hookPath(name string) string {
 	return filepath.Join(os.TempDir(), "truner", name+".sh")
 }

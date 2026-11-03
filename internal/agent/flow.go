@@ -71,13 +71,6 @@ func (a *Agent) prepareMachine(ctx context.Context) error {
 	if err := a.timed("user", func() error { return a.osEnsureUser(ctx) }); err != nil {
 		return fmt.Errorf("create runner user: %w", err)
 	}
-	if a.Cfg.UseNVMe {
-		a.timed("storage", func() error {
-			m, err := a.osSetupStorage(ctx)
-			a.storage = m
-			return err
-		})
-	}
 	var perr, rerr error
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -92,6 +85,16 @@ func (a *Agent) prepareMachine(ctx context.Context) error {
 	wg.Wait()
 	if rerr != nil {
 		return rerr
+	}
+	// Sequential, after the profile: both may use apt.
+	a.osRunnerDeps(ctx, a.osRunnerDir())
+	// After the runner is unpacked: local NVMe is mounted inside its work folder.
+	if a.Cfg.UseNVMe {
+		a.timed("storage", func() error {
+			m, err := a.osSetupStorage(ctx)
+			a.storage = m
+			return err
+		})
 	}
 	if perr != nil {
 		if a.Cfg.Mode != agentcfg.ModeRun {
@@ -127,6 +130,7 @@ func (a *Agent) runJob(ctx context.Context) error {
 		if err := a.ensureRunner(ctx, dir); err != nil {
 			return err
 		}
+		a.osRunnerDeps(ctx, dir)
 	}
 
 	cacheOn := false

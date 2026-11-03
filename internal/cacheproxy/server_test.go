@@ -223,6 +223,29 @@ func TestV1Flow(t *testing.T) {
 	}
 }
 
+func TestRangedDownloads(t *testing.T) {
+	_, ts, _ := newTestServer(t)
+	auth := token(`[{"Scope":"refs/heads/main","Permission":3}]`)
+	res := twirp(t, ts.URL, "CreateCacheEntry", auth, map[string]any{"key": "r", "version": "v"})
+	data := make([]byte, 5000)
+	rand.Read(data)
+	put(t, res["signed_upload_url"].(string), data)
+	dl := twirp(t, ts.URL, "GetCacheEntryDownloadURL", auth, map[string]any{"key": "r", "version": "v"})["signed_download_url"].(string)
+	for _, hdr := range []string{"Range", "x-ms-range"} {
+		req, _ := http.NewRequest(http.MethodGet, dl, nil)
+		req.Header.Set(hdr, "bytes=1234-")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusPartialContent || !bytes.Equal(got, data[1234:]) {
+			t.Fatalf("%s: status %d, %d bytes", hdr, resp.StatusCode, len(got))
+		}
+	}
+}
+
 func TestParseRange(t *testing.T) {
 	cases := []struct {
 		h    string
