@@ -291,16 +291,27 @@ func (s *Server) handleTwirp(w http.ResponseWriter, r *http.Request, method stri
 	ctx := r.Context()
 	switch method {
 	case "CreateCacheEntry":
-		ok, uploadURL, msg := s.createEntry(ctx, writeScope, req.Key, req.Version)
+		uploadURL, err := s.createEntry(ctx, writeScope, req.Key, req.Version)
+		if errors.Is(err, errEntryExists) || errors.Is(err, errEntryUploading) {
+			// GitHub answers a taken key with already_exists, and BuildKit's gha
+			// exporter relies on it: it skips the layer on that code but fails
+			// the whole build on ok=false.
+			twirpError(w, http.StatusConflict, "already_exists", err.Error())
+			return
+		}
+		if err != nil {
+			s.log.Error("cache reserve failed", "key", req.Key, "err", err)
+			twirpError(w, http.StatusInternalServerError, "internal", err.Error())
+			return
+		}
 		if isProto {
 			pw := &pbWriter{}
-			pw.boolean(1, ok)
+			pw.boolean(1, true)
 			pw.str(2, uploadURL)
-			pw.str(3, msg)
 			writeProto(w, pw.b)
 			return
 		}
-		writeJSON(w, map[string]any{"ok": ok, "signed_upload_url": uploadURL, "message": msg})
+		writeJSON(w, map[string]any{"ok": true, "signed_upload_url": uploadURL})
 	case "FinalizeCacheEntryUpload":
 		size, _ := req.SizeBytes.Int64()
 		ok, id, msg := s.finalizeEntry(ctx, writeScope, req.Key, req.Version, size)
@@ -343,23 +354,29 @@ func (s *Server) handleTwirp(w http.ResponseWriter, r *http.Request, method stri
 	}
 }
 
-func (s *Server) createEntry(ctx context.Context, scope, key, version string) (bool, string, string) {
+var (
+	errEntryExists    = errors.New("cache entry already exists")
+	errEntryUploading = errors.New("another job is already saving this cache entry")
+)
+
+// createEntry reserves an entry and returns its upload URL.
+func (s *Server) createEntry(ctx context.Context, scope, key, version string) (string, error) {
 	objKey := cachestore.ObjectKey(s.prefix, scope, version, key)
 	if _, err := s.store.Head(ctx, objKey); err == nil {
-		return false, "", "cache entry already exists"
+		return "", errEntryExists
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, u := range s.uploads {
 		if u.objKey == objKey && !u.committed && time.Since(u.created) < time.Hour {
-			return false, "", "another job is already saving this cache entry"
+			return "", errEntryUploading
 		}
 	}
 	u, err := s.newUploadLocked(objKey, key, version)
 	if err != nil {
-		return false, "", err.Error()
+		return "", err
 	}
-	return true, s.publicURL + "/upload/" + u.id, ""
+	return s.publicURL + "/upload/" + u.id, nil
 }
 
 func (s *Server) newUploadLocked(objKey, key, version string) (*upload, error) {
