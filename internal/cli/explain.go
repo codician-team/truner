@@ -46,6 +46,9 @@ func (a *app) explainCmd() *cobra.Command {
 			if !offline {
 				var err error
 				if e, err = a.connect(ctx); err == nil {
+					if p := e.labelPrefix(); p != prefix {
+						u.warn("installation %s runs jobs whose label starts with %s/, not %s/: a job with this label would wait for a machine that never starts", e.name, p, prefix)
+					}
 					if gl, err := loadGlobalConfig(ctx, e); err == nil {
 						g = gl
 					} else {

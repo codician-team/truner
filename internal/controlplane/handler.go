@@ -100,7 +100,7 @@ func (cp *ControlPlane) handleHTTP(ctx context.Context, req events.APIGatewayV2H
 		case strings.HasSuffix(path, "/github/callback"):
 			return cp.setupCallback(ctx, req)
 		case strings.HasSuffix(path, "/github/installed"):
-			return installedPage()
+			return installedPage(cp.Env.LabelPrefix)
 		}
 	}
 	if req.RequestContext.HTTP.Method != "POST" || !strings.HasSuffix(path, "/webhook") {

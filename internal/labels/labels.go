@@ -3,10 +3,10 @@
 //
 // Two equivalent syntaxes are supported:
 //
-//	runs-on: truner/cpu=4/ram=16/run=${{ github.run_id }}
-//	runs-on: [truner, cpu=4, ram=16, "run=${{ github.run_id }}"]
+//	runs-on: truner/cpu=4/ram=16/run=${{ github.run_id }}-test
+//	runs-on: [truner, cpu=4, ram=16, "run=${{ github.run_id }}-test"]
 //
-// The first label may also carry a value, e.g. `truner=${{ github.run_id }}/cpu=4`.
+// The first label may also carry a value, e.g. `truner=${{ github.run_id }}-test/cpu=4`.
 package labels
 
 import (
@@ -92,6 +92,33 @@ func Match(prefix string, raw []string) bool {
 		}
 	}
 	return false
+}
+
+// ForeignPrefix finds a label that looks like a truner label written for
+// another prefix: one starting with `truner`, `truner-<name>` or prefix in
+// other letter case, alone or followed by `/` or `=`. Such a job waits for a
+// runner that this installation never starts, so callers report it. It returns
+// the label and its prefix, or empty strings when the labels match prefix or
+// look unrelated.
+func ForeignPrefix(prefix string, raw []string) (label, foreign string) {
+	if prefix == "" {
+		prefix = DefaultPrefix
+	}
+	if Match(prefix, raw) {
+		return "", ""
+	}
+	for _, l := range raw {
+		l = strings.TrimSpace(l)
+		head := l
+		if i := strings.IndexAny(head, "/="); i >= 0 {
+			head = head[:i]
+		}
+		lower := strings.ToLower(head)
+		if lower == DefaultPrefix || strings.HasPrefix(lower, DefaultPrefix+"-") || strings.EqualFold(head, prefix) {
+			return l, head
+		}
+	}
+	return "", ""
 }
 
 // Parse parses job labels. ok is false when the job is not meant for truner.
