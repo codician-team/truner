@@ -15,8 +15,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/spf13/cobra"
 
-	"github.com/truner/truner/internal/controlplane"
-	"github.com/truner/truner/internal/costs"
+	"github.com/codician-team/truner/internal/controlplane"
+	"github.com/codician-team/truner/internal/costs"
 )
 
 func (e *env) jobsSince(ctx context.Context, days int) ([]controlplane.Job, error) {

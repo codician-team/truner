@@ -17,9 +17,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/spf13/cobra"
 
-	"github.com/truner/truner/internal/config"
-	"github.com/truner/truner/internal/controlplane"
-	"github.com/truner/truner/internal/labels"
+	"github.com/codician-team/truner/internal/config"
+	"github.com/codician-team/truner/internal/controlplane"
+	"github.com/codician-team/truner/internal/labels"
 )
 
 func (a *app) explainCmd() *cobra.Command {

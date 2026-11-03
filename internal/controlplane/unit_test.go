@@ -7,9 +7,9 @@ import (
 
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 
-	"github.com/truner/truner/internal/agentcfg"
-	"github.com/truner/truner/internal/config"
-	"github.com/truner/truner/internal/labels"
+	"github.com/codician-team/truner/internal/agentcfg"
+	"github.com/codician-team/truner/internal/config"
+	"github.com/codician-team/truner/internal/labels"
 )
 
 func mustGlobal(t *testing.T, y string) *config.Global {

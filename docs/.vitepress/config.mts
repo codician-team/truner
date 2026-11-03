@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { defineConfig } from 'vitepress'
 
-const repo = 'https://github.com/truner/truner'
+const repo = 'https://github.com/codician-team/truner'
 
 // The newest release in the changelog, shown in the navigation bar.
 const version =

@@ -1,13 +1,13 @@
 # Publishing truner (maintainers)
 
-This repository refers to itself as `truner/truner` (module path, release download
+This repository refers to itself as `codician-team/truner` (module path, release download
 URLs, install scripts, docs and the website) and to its website as
-`truner.github.io/truner`. To publish under another GitHub owner, for example
+`codician-team.github.io/truner`. To publish under another GitHub owner, for example
 `your-name/truner`:
 
 ```bash
-git grep -l -e 'truner/truner' -e 'truner\.github\.io' \
-  | xargs sed -i -e 's#truner/truner#your-name/truner#g' -e 's#truner\.github\.io#your-name.github.io#g'
+git grep -l -e 'codician-team/truner' -e 'codician-team\.github\.io' \
+  | xargs sed -i -e 's#codician-team/truner#your-name/truner#g' -e 's#codician-team\.github\.io#your-name.github.io#g'
 go mod tidy && go build ./... && go test ./...
 git commit -am "Publish as your-name/truner"
 ```

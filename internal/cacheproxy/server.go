@@ -35,7 +35,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/truner/truner/internal/cachestore"
+	"github.com/codician-team/truner/internal/cachestore"
 )
 
 // DefaultUpstream is GitHub's results service for github.com.

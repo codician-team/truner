@@ -8,8 +8,8 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 
-	"github.com/truner/truner/internal/agentcfg"
-	"github.com/truner/truner/internal/config"
+	"github.com/codician-team/truner/internal/agentcfg"
+	"github.com/codician-team/truner/internal/config"
 )
 
 // agentKey is the S3 key of an agent binary in the artifacts bucket.

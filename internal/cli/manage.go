@@ -21,9 +21,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/servicequotas"
 	"github.com/spf13/cobra"
 
-	"github.com/truner/truner/internal/cachestore"
-	"github.com/truner/truner/internal/config"
-	"github.com/truner/truner/internal/controlplane"
+	"github.com/codician-team/truner/internal/cachestore"
+	"github.com/codician-team/truner/internal/config"
+	"github.com/codician-team/truner/internal/controlplane"
 )
 
 // ---------------------------------------------------------------- images
@@ -247,7 +247,7 @@ func (a *app) cacheCmd() *cobra.Command {
 // ---------------------------------------------------------------- config
 
 const exampleGlobalConfig = `# truner account-wide configuration (truner config edit)
-# Every key is optional. Docs: https://github.com/truner/truner/blob/main/docs/configuration.md
+# Every key is optional. Docs: https://github.com/codician-team/truner/blob/main/docs/configuration.md
 #
 # defaults:            # applied to every job
 #   disk: 60

@@ -1,10 +1,10 @@
 # Installs the truner CLI on Windows.
-#   irm https://raw.githubusercontent.com/truner/truner/main/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/codician-team/truner/main/install.ps1 | iex
 # Options (environment): TRUNER_VERSION=v0.1.0  TRUNER_INSTALL_DIR=...  TRUNER_REPO=owner/name
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
-$repo = if ($env:TRUNER_REPO) { $env:TRUNER_REPO } else { "truner/truner" }
+$repo = if ($env:TRUNER_REPO) { $env:TRUNER_REPO } else { "codician-team/truner" }
 $version = if ($env:TRUNER_VERSION) { $env:TRUNER_VERSION } else { "latest" }
 $arch = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "arm64" } else { "amd64" }
 $bin = "truner_windows_$arch.exe"

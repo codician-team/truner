@@ -5,7 +5,7 @@ package main
 import (
 	"os"
 
-	"github.com/truner/truner/internal/cli"
+	"github.com/codician-team/truner/internal/cli"
 )
 
 func main() {

@@ -18,17 +18,17 @@ everything it deploys.
 ::: code-group
 
 ```bash [macOS / Linux]
-curl -fsSL https://raw.githubusercontent.com/truner/truner/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/codician-team/truner/main/install.sh | sh
 ```
 
 ```powershell [Windows]
-irm https://raw.githubusercontent.com/truner/truner/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/codician-team/truner/main/install.ps1 | iex
 ```
 
 :::
 
 Or download a binary for your platform from the
-[releases page](https://github.com/truner/truner/releases), and check it against
+[releases page](https://github.com/codician-team/truner/releases), and check it against
 `checksums.txt`.
 
 ## 2. Install truner into your AWS account

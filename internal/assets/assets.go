@@ -18,7 +18,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/truner/truner/internal/version"
+	"github.com/codician-team/truner/internal/version"
 )
 
 //go:embed all:dist

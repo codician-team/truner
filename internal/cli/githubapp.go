@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/truner/truner/internal/github"
-	"github.com/truner/truner/internal/version"
+	"github.com/codician-team/truner/internal/github"
+	"github.com/codician-team/truner/internal/version"
 )
 
 // appPermissions are what truner needs, and why:

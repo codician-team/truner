@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 
-const raw = 'https://raw.githubusercontent.com/truner/truner/main'
+const raw = 'https://raw.githubusercontent.com/codician-team/truner/main'
 const tabs = [
   { id: 'unix', label: 'macOS / Linux', prompt: '$', cmd: `curl -fsSL ${raw}/install.sh | sh` },
   { id: 'windows', label: 'Windows', prompt: 'PS>', cmd: `irm ${raw}/install.ps1 | iex` },
@@ -48,7 +48,7 @@ async function copy() {
     </div>
     <p class="then">
       then run <code>truner install</code>, or grab a binary from
-      <a href="https://github.com/truner/truner/releases">releases</a>
+      <a href="https://github.com/codician-team/truner/releases">releases</a>
     </p>
   </div>
 </template>

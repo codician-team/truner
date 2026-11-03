@@ -3,13 +3,13 @@ package version
 
 import "fmt"
 
-// These are overridden with -ldflags "-X github.com/truner/truner/internal/version.Version=..."
+// These are overridden with -ldflags "-X github.com/codician-team/truner/internal/version.Version=..."
 var (
 	Version = "dev"
 	Commit  = "none"
 	Date    = "unknown"
 	// Repo is the GitHub "owner/name" slug releases are published under.
-	Repo = "truner/truner"
+	Repo = "codician-team/truner"
 )
 
 // String returns a human readable version line.

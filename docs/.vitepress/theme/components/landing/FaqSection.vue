@@ -49,7 +49,7 @@ function md(s: string) {
         <h2 class="tl-h2">Questions, answered.</h2>
         <p class="tl-lead">
           Something missing? Read the <a :href="withBase('/faq')">full FAQ</a> or
-          <a href="https://github.com/truner/truner/issues">open an issue</a>.
+          <a href="https://github.com/codician-team/truner/issues">open an issue</a>.
         </p>
       </div>
       <div class="list">

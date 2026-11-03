@@ -22,8 +22,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 
-	"github.com/truner/truner/internal/config"
-	"github.com/truner/truner/internal/github"
+	"github.com/codician-team/truner/internal/config"
+	"github.com/codician-team/truner/internal/github"
 )
 
 // GlobalConfigKey is where the account-wide config lives in the data bucket.

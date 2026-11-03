@@ -19,10 +19,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ecr"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 
-	"github.com/truner/truner/internal/agentcfg"
-	"github.com/truner/truner/internal/cacheproxy"
-	"github.com/truner/truner/internal/cachestore"
-	"github.com/truner/truner/internal/github"
+	"github.com/codician-team/truner/internal/agentcfg"
+	"github.com/codician-team/truner/internal/cacheproxy"
+	"github.com/codician-team/truner/internal/cachestore"
+	"github.com/codician-team/truner/internal/github"
 )
 
 func (a *Agent) user() string {

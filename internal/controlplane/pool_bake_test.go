@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/truner/truner/internal/agentcfg"
-	"github.com/truner/truner/internal/config"
+	"github.com/codician-team/truner/internal/agentcfg"
+	"github.com/codician-team/truner/internal/config"
 )
 
 func TestIntegrationWarmPool(t *testing.T) {

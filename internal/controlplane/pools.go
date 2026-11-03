@@ -13,9 +13,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 
-	"github.com/truner/truner/internal/agentcfg"
-	"github.com/truner/truner/internal/config"
-	"github.com/truner/truner/internal/github"
+	"github.com/codician-team/truner/internal/agentcfg"
+	"github.com/codician-team/truner/internal/config"
+	"github.com/codician-team/truner/internal/github"
 )
 
 // Pool instance states (tag truner:pool-state).

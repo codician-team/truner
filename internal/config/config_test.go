@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/truner/truner/internal/labels"
+	"github.com/codician-team/truner/internal/labels"
 )
 
 func resolve(t *testing.T, r Resolver, raw ...string) *JobSpec {

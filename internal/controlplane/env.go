@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/truner/truner/internal/labels"
+	"github.com/codician-team/truner/internal/labels"
 )
 
 // Env is the control plane configuration, read from Lambda environment

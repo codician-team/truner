@@ -14,10 +14,10 @@ import (
 	"runtime"
 	"syscall"
 
-	"github.com/truner/truner/internal/agent"
-	"github.com/truner/truner/internal/cacheproxy"
-	"github.com/truner/truner/internal/cachestore"
-	"github.com/truner/truner/internal/version"
+	"github.com/codician-team/truner/internal/agent"
+	"github.com/codician-team/truner/internal/cacheproxy"
+	"github.com/codician-team/truner/internal/cachestore"
+	"github.com/codician-team/truner/internal/version"
 )
 
 func logPath() string {

@@ -1,10 +1,10 @@
 #!/bin/sh
 # Installs the truner CLI.
-#   curl -fsSL https://raw.githubusercontent.com/truner/truner/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/codician-team/truner/main/install.sh | sh
 # Options (environment): TRUNER_VERSION=v0.1.0  TRUNER_INSTALL_DIR=/usr/local/bin  TRUNER_REPO=owner/name
 set -eu
 
-REPO="${TRUNER_REPO:-truner/truner}"
+REPO="${TRUNER_REPO:-codician-team/truner}"
 VERSION="${TRUNER_VERSION:-latest}"
 
 os=$(uname -s | tr '[:upper:]' '[:lower:]')

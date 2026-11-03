@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/truner/truner/internal/labels"
+	"github.com/codician-team/truner/internal/labels"
 )
 
 // JobSpec is the fully resolved description of the machine for one job.

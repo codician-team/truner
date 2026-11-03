@@ -35,8 +35,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	ddbtypes "github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
-	"github.com/truner/truner/internal/agentcfg"
-	"github.com/truner/truner/internal/github"
+	"github.com/codician-team/truner/internal/agentcfg"
+	"github.com/codician-team/truner/internal/github"
 )
 
 type fakeInstance struct {

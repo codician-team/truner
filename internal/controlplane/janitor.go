@@ -13,8 +13,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 
-	"github.com/truner/truner/internal/costs"
-	"github.com/truner/truner/internal/github"
+	"github.com/codician-team/truner/internal/costs"
+	"github.com/codician-team/truner/internal/github"
 )
 
 // RunJanitor performs all periodic maintenance. Each task is isolated so

@@ -12,9 +12,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 
-	"github.com/truner/truner/internal/config"
-	"github.com/truner/truner/internal/github"
-	"github.com/truner/truner/internal/labels"
+	"github.com/codician-team/truner/internal/config"
+	"github.com/codician-team/truner/internal/github"
+	"github.com/codician-team/truner/internal/labels"
 )
 
 // jobTTL is how long job records are kept (for `truner jobs` and cost reports).

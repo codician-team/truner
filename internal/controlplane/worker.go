@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/truner/truner/internal/agentcfg"
-	"github.com/truner/truner/internal/cachestore"
-	"github.com/truner/truner/internal/config"
-	"github.com/truner/truner/internal/github"
-	"github.com/truner/truner/internal/labels"
+	"github.com/codician-team/truner/internal/agentcfg"
+	"github.com/codician-team/truner/internal/cachestore"
+	"github.com/codician-team/truner/internal/config"
+	"github.com/codician-team/truner/internal/github"
+	"github.com/codician-team/truner/internal/labels"
 )
 
 // maxLaunchAttempts bounds retries for capacity and transient errors (~1 hour).

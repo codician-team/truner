@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/truner/truner/internal/cachestore"
+	"github.com/codician-team/truner/internal/cachestore"
 )
 
 // TestNodeToolkitE2E runs the real @actions/cache toolkit against the proxy.

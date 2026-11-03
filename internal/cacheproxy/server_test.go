@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/truner/truner/internal/cachestore"
+	"github.com/codician-team/truner/internal/cachestore"
 )
 
 func newTestServer(t *testing.T) (*Server, *httptest.Server, *cachestore.Memory) {

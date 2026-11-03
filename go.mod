@@ -1,4 +1,4 @@
-module github.com/truner/truner
+module github.com/codician-team/truner
 
 go 1.26.0
 

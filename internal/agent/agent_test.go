@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/truner/truner/internal/agentcfg"
-	"github.com/truner/truner/internal/cacheproxy"
+	"github.com/codician-team/truner/internal/agentcfg"
+	"github.com/codician-team/truner/internal/cacheproxy"
 )
 
 func TestPatchWorker(t *testing.T) {

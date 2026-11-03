@@ -10,8 +10,8 @@ import (
 
 	"github.com/aws/aws-lambda-go/lambda"
 
-	"github.com/truner/truner/internal/controlplane"
-	"github.com/truner/truner/internal/version"
+	"github.com/codician-team/truner/internal/controlplane"
+	"github.com/codician-team/truner/internal/version"
 )
 
 func main() {

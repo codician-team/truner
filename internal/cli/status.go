@@ -16,10 +16,10 @@ import (
 	sqstypes "github.com/aws/aws-sdk-go-v2/service/sqs/types"
 	"github.com/spf13/cobra"
 
-	"github.com/truner/truner/internal/config"
-	"github.com/truner/truner/internal/controlplane"
-	"github.com/truner/truner/internal/github"
-	"github.com/truner/truner/internal/version"
+	"github.com/codician-team/truner/internal/config"
+	"github.com/codician-team/truner/internal/controlplane"
+	"github.com/codician-team/truner/internal/github"
+	"github.com/codician-team/truner/internal/version"
 )
 
 func (a *app) statusCmd() *cobra.Command {

@@ -12,8 +12,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 
-	"github.com/truner/truner/internal/config"
-	"github.com/truner/truner/internal/github"
+	"github.com/codician-team/truner/internal/config"
+	"github.com/codician-team/truner/internal/github"
 )
 
 const runnerPK = "runner#latest"

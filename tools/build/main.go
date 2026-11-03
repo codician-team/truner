@@ -28,7 +28,7 @@ import (
 	"time"
 )
 
-const pkg = "github.com/truner/truner"
+const pkg = "github.com/codician-team/truner"
 
 var cliTargets = [][2]string{
 	{"linux", "amd64"}, {"linux", "arm64"},

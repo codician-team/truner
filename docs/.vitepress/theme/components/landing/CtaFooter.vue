@@ -2,7 +2,7 @@
 import { withBase } from 'vitepress'
 import InstallCommand from './InstallCommand.vue'
 
-const repo = 'https://github.com/truner/truner'
+const repo = 'https://github.com/codician-team/truner'
 const columns = [
   {
     title: 'Docs',

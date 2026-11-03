@@ -13,7 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/pricing"
 	pricingtypes "github.com/aws/aws-sdk-go-v2/service/pricing/types"
 
-	"github.com/truner/truner/internal/config"
+	"github.com/codician-team/truner/internal/config"
 )
 
 type cachedPrice struct {

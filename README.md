@@ -3,9 +3,9 @@
 **Fast, cheap, ephemeral GitHub Actions runners in your own AWS account.**
 One command to install. One label to use. Zero cost while idle.
 
-[Website and documentation](https://truner.github.io/truner/) ·
-[Getting started](https://truner.github.io/truner/getting-started) ·
-[Releases](https://github.com/truner/truner/releases)
+[Website and documentation](https://codician-team.github.io/truner/) ·
+[Getting started](https://codician-team.github.io/truner/getting-started) ·
+[Releases](https://github.com/codician-team/truner/releases)
 
 ```yaml
 jobs:
@@ -97,15 +97,15 @@ organization or personal account.
 
 ```bash
 # macOS / Linux
-curl -fsSL https://raw.githubusercontent.com/truner/truner/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/codician-team/truner/main/install.sh | sh
 ```
 
 ```powershell
 # Windows (PowerShell)
-irm https://raw.githubusercontent.com/truner/truner/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/codician-team/truner/main/install.ps1 | iex
 ```
 
-Or download a binary from the [releases page](https://github.com/truner/truner/releases).
+Or download a binary from the [releases page](https://github.com/codician-team/truner/releases).
 
 **2. Install truner into your AWS account**
 

@@ -9,7 +9,7 @@ import (
 
 	"github.com/aws/aws-lambda-go/events"
 
-	"github.com/truner/truner/internal/config"
+	"github.com/codician-team/truner/internal/config"
 )
 
 // AdminRequest is a direct Lambda invocation from the CLI.

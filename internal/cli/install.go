@@ -19,11 +19,11 @@ import (
 	ssmtypes "github.com/aws/aws-sdk-go-v2/service/ssm/types"
 	"github.com/spf13/cobra"
 
-	"github.com/truner/truner/internal/assets"
-	"github.com/truner/truner/internal/controlplane"
-	"github.com/truner/truner/internal/deploy"
-	"github.com/truner/truner/internal/github"
-	"github.com/truner/truner/internal/version"
+	"github.com/codician-team/truner/internal/assets"
+	"github.com/codician-team/truner/internal/controlplane"
+	"github.com/codician-team/truner/internal/deploy"
+	"github.com/codician-team/truner/internal/github"
+	"github.com/codician-team/truner/internal/version"
 )
 
 type installFlags struct {

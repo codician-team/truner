@@ -22,8 +22,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/ec2/imds"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 
-	"github.com/truner/truner/internal/agentcfg"
-	"github.com/truner/truner/internal/cacheproxy"
+	"github.com/codician-team/truner/internal/agentcfg"
+	"github.com/codician-team/truner/internal/cacheproxy"
 )
 
 // CachePort is where the magic cache proxy listens.
