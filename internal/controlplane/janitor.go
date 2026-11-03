@@ -101,6 +101,12 @@ func (cp *ControlPlane) reconcileInstances(ctx context.Context) ([]ec2types.Inst
 		if err != nil || launch == nil {
 			continue
 		}
+		if launch.InstanceID != id {
+			// Its job was launched again: the machine may be kept apart.
+			if m, _ := cp.Store.GetMachine(ctx, InstanceTag(inst, TagRunnerName)); m != nil {
+				launch = m
+			}
+		}
 		// The job that ran on this machine is over: the agent normally powers
 		// off right away; make sure it does.
 		if launch.MachineDone > 0 && launch.InstanceID == id {
@@ -115,25 +121,42 @@ func (cp *ControlPlane) reconcileInstances(ctx context.Context) ([]ec2types.Inst
 	return insts, nil
 }
 
+// recentJobs returns the job records of today and yesterday (UTC).
+func (cp *ControlPlane) recentJobs(ctx context.Context) ([]Job, error) {
+	var jobs []Job
+	for _, day := range []time.Time{time.Now(), time.Now().Add(-24 * time.Hour)} {
+		js, err := cp.Store.JobsInColl(ctx, JobColl(day))
+		if err != nil {
+			return nil, err
+		}
+		jobs = append(jobs, js...)
+	}
+	return jobs, nil
+}
+
 // reconcileJobs repairs jobs stuck between webhook and runner pickup: lost
-// queue messages, crashed workers and machines that died before starting
-// (for example spot interruptions during boot).
+// queue messages, crashed workers, machines that died before starting (for
+// example spot interruptions during boot) and jobs whose machine ran another
+// job. instances is nil when they could not be listed, microvms likewise.
 func (cp *ControlPlane) reconcileJobs(ctx context.Context, instances []ec2types.Instance, microvms map[string]mvmtypes.MicrovmItem) error {
 	byID := map[string]ec2types.Instance{}
 	for _, i := range instances {
 		byID[aws.ToString(i.InstanceId)] = i
 	}
-	var jobs []Job
-	for _, day := range []time.Time{time.Now(), time.Now().Add(-24 * time.Hour)} {
-		js, err := cp.Store.JobsInColl(ctx, JobColl(day))
-		if err != nil {
-			return err
-		}
-		jobs = append(jobs, js...)
+	jobs, err := cp.recentJobs(ctx)
+	if err != nil {
+		return err
 	}
 	now := time.Now()
 	ghCalls := 0
 	var gh *github.Client
+	client := func() (*github.Client, error) {
+		var err error
+		if gh == nil {
+			gh, err = cp.GitHub(ctx)
+		}
+		return gh, err
+	}
 	for i := range jobs {
 		j := &jobs[i]
 		updated := time.Unix(j.UpdatedAt, 0)
@@ -165,30 +188,41 @@ func (cp *ControlPlane) reconcileJobs(ctx context.Context, instances []ec2types.
 					continue // the MicroVM list failed: liveness unknown
 				}
 				_, alive = microvms[j.InstanceID]
+			} else if instances == nil {
+				continue // the instance list failed: liveness unknown
 			}
-			idleLimit := 25 * time.Minute
-			if isMicroVM(j.InstanceID) {
-				idleLimit = 5 * time.Minute // its runner starts within seconds
-			}
-			if (!alive && age > 90*time.Second) || (alive && age > idleLimit) {
+			if (!alive && age > 90*time.Second) || (alive && age > idleLimit(j.InstanceID)) {
 				if ghCalls >= 40 {
 					continue
 				}
-				if gh == nil {
-					var err error
-					if gh, err = cp.GitHub(ctx); err != nil {
-						return err
-					}
+				gh, err := client()
+				if err != nil {
+					return err
 				}
 				ghCalls++
 				cp.checkUnpickedJob(ctx, gh, j, alive)
 			}
 		}
 	}
-	if len(microvms) > 0 {
-		cp.reconcileMicrovms(ctx, microvms, jobs)
+	var errs []error
+	if instances != nil {
+		if waiting := withoutMachine(jobs, machinesUp(instances, microvms), now); len(waiting) > 0 {
+			gh, err := client()
+			if err != nil {
+				return err
+			}
+			budget := 40 - ghCalls
+			errs = append(errs, cp.relaunchTaken(ctx, gh, waiting, &budget))
+		}
 	}
-	return nil
+	if len(microvms) > 0 {
+		kept, err := cp.Store.JobsInColl(ctx, collMachines)
+		if err != nil {
+			return errors.Join(append(errs, err)...)
+		}
+		cp.reconcileMicrovms(ctx, microvms, append(kept, jobs...))
+	}
+	return errors.Join(errs...)
 }
 
 // checkUnpickedJob handles a launched machine whose runner never took a job.
@@ -336,6 +370,9 @@ func (cp *ControlPlane) HandleSpotInterruption(ctx context.Context, instanceID s
 	cp.Log.Warn("spot interruption warning", "instance", instanceID, "job", jobID)
 	if jobID == 0 {
 		return nil
+	}
+	if name := InstanceTag(*inst, TagRunnerName); launchJobID(name) == jobID {
+		return cp.setMachine(ctx, name, map[string]any{"interrupted": true})
 	}
 	return ignoreCond(cp.Store.UpdateJob(ctx, jobID, map[string]any{"interrupted": true}, nil))
 }

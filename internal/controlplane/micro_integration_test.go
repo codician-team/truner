@@ -237,3 +237,84 @@ func TestIntegrationMicroImageGone(t *testing.T) {
 		t.Fatalf("the image must be created again: %v", h.aws.microBuilds)
 	}
 }
+
+// The late queued event on MicroVMs: build gets a MicroVM again, and the one
+// that ran typecheck is ended when typecheck completes, not before.
+func TestIntegrationMicroMachineTaken(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	h.cp.Store.UpdateItem(ctx, microPK(2), Item{"coll": collMicro, "ts": time.Now().Unix(), "vcpu": 2, "status": "ready",
+		"arn": "arn:aws:lambda:us-east-1:123456789012:microvm-image:test-micro-2", "imageVersion": "1", "agent": "v-test", "runner": "2.338.2"})
+	h.aws.microImages["test-micro-2"] = &fakeMicroImage{name: "test-micro-2", arn: "arn:aws:lambda:us-east-1:123456789012:microvm-image:test-micro-2", versions: map[string]string{"1": "SUCCESSFUL"}}
+	labels := []string{"truner/micro/run=900"}
+	const typecheck, astro, build = 9301, 9302, 9303
+	h.webhook("queued", typecheck, labels, "", "")
+	h.webhook("queued", build, labels, "", "")
+	h.drainQueue()
+	tc, b := h.job(typecheck), h.job(build)
+	if !isMicroVM(tc.InstanceID) || !isMicroVM(b.InstanceID) {
+		t.Fatalf("expected MicroVMs: %+v %+v", tc, b)
+	}
+	h.webhook("in_progress", astro, labels, tc.RunnerName, "")
+	h.webhook("in_progress", typecheck, labels, b.RunnerName, "")
+	h.drainQueue()
+	nb := h.job(build)
+	if nb.Status != StatusLaunched || !isMicroVM(nb.InstanceID) || nb.InstanceID == b.InstanceID {
+		t.Fatalf("build must get a MicroVM again: %+v", nb)
+	}
+
+	// The janitor knows the kept MicroVM: it is not an orphan.
+	h.aws.mu.Lock()
+	h.aws.microvms[b.InstanceID].started = time.Now().Add(-20 * time.Minute)
+	h.aws.mu.Unlock()
+	live, _ := h.cp.LiveMicrovms(ctx)
+	insts, _ := h.cp.ManagedInstances(ctx)
+	if err := h.cp.reconcileJobs(ctx, insts, live); err != nil {
+		t.Fatal(err)
+	}
+	if st := h.aws.microvms[b.InstanceID].state; st == "TERMINATED" {
+		t.Fatal("the MicroVM running typecheck must not be ended")
+	}
+
+	h.webhook("completed", typecheck, labels, b.RunnerName, "success")
+	if st := h.aws.microvms[b.InstanceID].state; st != "TERMINATED" {
+		t.Fatalf("the MicroVM that ran typecheck must be ended, state %s", st)
+	}
+	if st := h.aws.microvms[nb.InstanceID].state; st == "TERMINATED" {
+		t.Fatal("build's new MicroVM must not be ended")
+	}
+	if got := h.job(typecheck); got.RanOnInstance != b.InstanceID || got.RanOnType != "microvm-2vcpu" || got.Cost <= 0 {
+		t.Fatalf("typecheck's cost: %+v", got)
+	}
+}
+
+// A job is cancelled while another job runs on its MicroVM: the janitor must
+// not end that MicroVM, and no MicroVM is launched for the cancelled job.
+func TestIntegrationMicroCancelledWhileTaken(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	h.cp.Store.UpdateItem(ctx, microPK(2), Item{"coll": collMicro, "ts": time.Now().Unix(), "vcpu": 2, "status": "ready",
+		"arn": "arn:aws:lambda:us-east-1:123456789012:microvm-image:test-micro-2", "imageVersion": "1", "agent": "v-test", "runner": "2.338.2"})
+	h.aws.microImages["test-micro-2"] = &fakeMicroImage{name: "test-micro-2", arn: "arn:aws:lambda:us-east-1:123456789012:microvm-image:test-micro-2", versions: map[string]string{"1": "SUCCESSFUL"}}
+	labels := []string{"truner/micro/run=900"}
+	h.webhook("queued", 9401, labels, "", "")
+	h.drainQueue()
+	first := h.job(9401)
+	h.gh.jobStatus[9401] = "completed"
+	h.webhook("in_progress", 9402, labels, first.RunnerName, "")
+	h.drainQueue()
+	if got := h.job(9401); got.Status != StatusCancelled || got.InstanceID != first.InstanceID || len(h.aws.microRuns) != 1 {
+		t.Fatalf("a job GitHub no longer has queued gets no MicroVM again: %+v, %d runs", got, len(h.aws.microRuns))
+	}
+	h.aws.mu.Lock()
+	h.aws.microvms[first.InstanceID].started = time.Now().Add(-10 * time.Minute)
+	h.aws.mu.Unlock()
+	live, _ := h.cp.LiveMicrovms(ctx)
+	insts, _ := h.cp.ManagedInstances(ctx)
+	if err := h.cp.reconcileJobs(ctx, insts, live); err != nil {
+		t.Fatal(err)
+	}
+	if st := h.aws.microvms[first.InstanceID].state; st == "TERMINATED" {
+		t.Fatal("the MicroVM running the other job must not be ended")
+	}
+}

@@ -108,7 +108,7 @@ GitHub gives a job to *any* online runner whose labels match. truner registers e
 machine with exactly its job's labels. The run id keeps a machine from taking a job of
 another workflow run, and the job's name after it (`-test`) keeps it from taking another
 job of the same run. Give every job its own token: jobs with equal labels can take each
-other's machines and leave one job without a machine. See
+other's machines, and one of them may then wait for a second launch. See
 [one run token per job](labels.md#one-run-token-per-job).
 :::
 

@@ -550,7 +550,8 @@ func (cp *ControlPlane) reconcileMicrovms(ctx context.Context, live map[string]m
 			why = "no job launched it"
 		case j != nil && j.MachineDone > 0 && now.Sub(time.Unix(j.MachineDone, 0)) > 2*time.Minute:
 			why = "its job is over"
-		case j != nil && (j.Status == StatusCancelled || j.Status == StatusFailed) && age > 5*time.Minute:
+		case j != nil && (j.Status == StatusCancelled || j.Status == StatusFailed) && age > 5*time.Minute &&
+			j.PickedBy == 0: // a picked one runs another job with the same labels
 			why = "its job was " + j.Status
 		}
 		if why != "" {

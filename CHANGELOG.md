@@ -10,12 +10,20 @@
   the installation's prefix, and `truner explain` warns about a label with another
   prefix. CLI hints such as the one in `truner jobs` use the installation's prefix
   instead of `truner/`.
-- **One run token per job.** Jobs with equal labels can take each other's machines.
-  When GitHub delivers a job's `queued` event after the job has already started on a
-  machine launched for another job, no machine is launched for it and one job is left
-  waiting. The control plane now logs it, and `truner doctor` reports the waiting job.
-  All examples and docs now use `run=${{ github.run_id }}-<job>` (with the matrix value
-  in matrix jobs), and so do truner's own workflows.
+- **A job left without a machine gets one.** Jobs with equal labels can take each
+  other's machines. When a job started on a machine launched for another job before a
+  machine was launched for itself, one job with those labels waited with no machine
+  until it was cancelled ([#3](https://github.com/codician-team/truner/issues/3)). That
+  happened when GitHub delivered the job's `queued` event late, and when the job's own
+  launch was waiting for capacity, the instance limit or the budget. The control plane
+  now launches a machine again for the job left waiting, about 30 seconds later and on
+  every janitor run, once GitHub confirms that the job is still queued and no other
+  machine with its labels is coming. The machine it had still books its cost to the job
+  that ran on it, and is ended when that job is over.
+- **One run token per job.** All examples and docs now use
+  `run=${{ github.run_id }}-<job>` (with the matrix value in matrix jobs), and so do
+  truner's own workflows. A token per job keeps every job on the machine launched for it.
+  `truner doctor` reports a job whose machine ran another job and that still waits.
 - **CLI and installation versions.** A CLI older than the installation now warns on
   every command, because it may not know the installation's labels and images (a v0.1.1
   CLI does not know `micro`). `truner doctor` and `truner status` no longer tell an older

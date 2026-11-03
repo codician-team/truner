@@ -103,7 +103,7 @@ and the account config.
 | Spot interruption during the job | job re-run on on-demand capacity after the run ends |
 | Job cancelled while machine boots | machine terminated, runner deregistered |
 | Jobs with equal labels swap machines | harmless when both machines come; costs are booked to the machine that ran each job |
-| A job starts on another job's machine before its own launch (late `queued` event) | logged; the other job waits with no machine and `truner doctor` reports it ([#3](https://github.com/codician-team/truner/issues/3)). Use a [run token per job](labels.md#one-run-token-per-job) |
+| A job starts on another job's machine before its own launch (late `queued` event, or a launch waiting for capacity) | logged; the job left waiting gets a machine again once GitHub confirms it is still queued ([#3](https://github.com/codician-team/truner/issues/3)). The taken machine stays booked to the job that ran on it |
 | Labels carry another installation's prefix | no machine; logged and reported by `truner doctor` |
 | Agent crash | machine powers off. Deadline tag and janitor guarantee termination |
 | Invalid label / config | job fails with the reason in its log |
