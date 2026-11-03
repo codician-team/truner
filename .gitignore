@@ -1,0 +1,9 @@
+/dist/
+/internal/assets/dist/*
+!/internal/assets/dist/.keep
+*.exe
+*.test
+*.out
+.idea/
+.vscode/
+.DS_Store

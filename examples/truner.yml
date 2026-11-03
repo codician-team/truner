@@ -1,0 +1,23 @@
+# Example .github/truner.yml for a repository.
+# Validate with: truner config validate --repo .github/truner.yml
+
+defaults:
+  disk: 60
+
+runners:
+  big:
+    extends: 16cpu-linux-x64
+    image: ubuntu24-full
+    disk: 200
+  e2e:
+    cpu: 4-8
+    ram: 16
+    family: [c7a, m7a, c7i, m7i]
+    nvme: true
+    timeout: 90
+    env:
+      PLAYWRIGHT_WORKERS: "4"
+  release:
+    cpu: 8
+    spot: false          # never interrupted
+    private: true        # static egress IP (install with --nat)

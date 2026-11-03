@@ -1,0 +1,32 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: test
+        run: go test ./...
+      - name: build
+        run: go run ./tools/build -version "${GITHUB_REF_NAME}" -repo "${GITHUB_REPOSITORY}" -out dist
+      - name: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes=$(awk -v v="## ${GITHUB_REF_NAME}" '$0==v{f=1;next} /^## /{f=0} f' CHANGELOG.md)
+          gh release create "${GITHUB_REF_NAME}" dist/* \
+            --title "truner ${GITHUB_REF_NAME}" \
+            --notes "${notes:-See CHANGELOG.md}" \
+            --verify-tag

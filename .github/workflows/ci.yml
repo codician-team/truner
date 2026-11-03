@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      dynamodb:
+        image: amazon/dynamodb-local
+        ports: ["8000:8000"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: gofmt
+        run: test -z "$(gofmt -l . | tee /dev/stderr)"
+      - name: vet
+        run: |
+          go vet ./...
+          GOOS=windows go vet ./...
+          GOOS=darwin go vet ./...
+      - name: unit and integration tests
+        env:
+          TRUNER_DYNAMODB_LOCAL: http://localhost:8000
+        run: go test -race ./...
+      - name: magic cache against the real @actions/cache toolkit
+        run: |
+          mkdir -p /tmp/toolkit && cd /tmp/toolkit && npm init -y >/dev/null && npm install --silent @actions/cache
+          cd "$GITHUB_WORKSPACE"
+          TRUNER_NODE_E2E=/tmp/toolkit go test ./internal/cacheproxy -run NodeToolkit -v
+      - name: lint CloudFormation template
+        run: |
+          pip install --quiet cfn-lint
+          cfn-lint internal/deploy/template.yaml
+      - name: shellcheck profiles
+        run: shellcheck -S warning internal/agent/profiles/*.sh install.sh
+      - name: build
+        run: go run ./tools/build -targets host -out /tmp/dist
+
+  profiles:
+    # Run the standard profile on real Ubuntu images.
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        image: ["ubuntu:24.04", "ubuntu:22.04"]
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          docker run --rm -v "$PWD/internal/agent/profiles:/p" ${{ matrix.image }} bash -c '
+            apt-get update -qq && apt-get install -y -qq curl ca-certificates sudo >/dev/null &&
+            useradd -m -u 1001 runner &&
+            bash /p/standard.sh &&
+            for t in git jq docker gh aws yq python3; do command -v $t >/dev/null || { echo "missing $t"; exit 1; }; done'

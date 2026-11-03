@@ -1,0 +1,846 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  truner - ephemeral, autoscaling GitHub Actions runners in your own AWS account.
+  Deployed and managed by the `truner` CLI.
+
+Parameters:
+  Version:
+    Type: String
+    Description: truner version (agent binaries are looked up under agent/<version>/ in the artifacts bucket).
+  ArtifactsBucket:
+    Type: String
+    Description: Bucket holding the Lambda package and agent binaries (created by the CLI).
+  LambdaKey:
+    Type: String
+    Description: S3 key of the control plane Lambda package.
+  LabelPrefix:
+    Type: String
+    Default: truner
+    AllowedPattern: "^[a-z0-9][a-z0-9-]{0,30}$"
+    Description: First label of jobs routed to this installation (runs-on truner/...).
+  NetworkMode:
+    Type: String
+    Default: create
+    AllowedValues: [create, existing]
+    Description: Create a dedicated VPC, or use existing subnets.
+  VpcCidr:
+    Type: String
+    Default: 10.100.0.0/16
+    AllowedPattern: "^(\\d{1,3}\\.){3}\\d{1,3}/16$"
+  AvailabilityZoneCount:
+    Type: Number
+    Default: 3
+    AllowedValues: [2, 3]
+  EnableNat:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: Create private subnets behind a NAT gateway for a static egress IP (~$32/month plus data).
+  ExistingVpcId:
+    Type: String
+    Default: ""
+  ExistingPublicSubnetIds:
+    Type: CommaDelimitedList
+    Default: ""
+    Description: Subnets that assign public IPs (or route through NAT) for NetworkMode=existing.
+  ExistingPrivateSubnetIds:
+    Type: CommaDelimitedList
+    Default: ""
+    Description: Subnets used by jobs with `private=true` (NetworkMode=existing).
+  SshCidr:
+    Type: String
+    Default: ""
+    Description: CIDR allowed to SSH into runners (empty disables SSH ingress; SSM Session Manager always works).
+  CacheRetentionDays:
+    Type: Number
+    Default: 10
+    MinValue: 1
+  LogRetentionDays:
+    Type: Number
+    Default: 14
+    AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365]
+  AlertEmail:
+    Type: String
+    Default: ""
+    Description: Email for budget alerts, launch failures and daily reports (optional).
+  DailyReport:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+  EnableEcrCache:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+  RunnerPolicyArns:
+    Type: CommaDelimitedList
+    Default: ""
+    Description: Extra managed policies for runner machines (e.g. to deploy from CI without keys).
+
+Conditions:
+  CreateVpc: !Equals [!Ref NetworkMode, create]
+  ThreeAZ: !Equals [!Ref AvailabilityZoneCount, 3]
+  CreateVpc3: !And [!Condition CreateVpc, !Condition ThreeAZ]
+  CreateNat: !And [!Condition CreateVpc, !Equals [!Ref EnableNat, "true"]]
+  CreateNat3: !And [!Condition CreateNat, !Condition ThreeAZ]
+  HasSsh: !Not [!Equals [!Ref SshCidr, ""]]
+  HasAlertEmail: !Not [!Equals [!Ref AlertEmail, ""]]
+  EnableEcr: !Equals [!Ref EnableEcrCache, "true"]
+  HasRunnerPolicies: !Not [!Equals [!Join ["", !Ref RunnerPolicyArns], ""]]
+
+Resources:
+  # ---------------------------------------------------------------- network
+  Vpc:
+    Type: AWS::EC2::VPC
+    Condition: CreateVpc
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags: [{ Key: Name, Value: !Sub "${AWS::StackName}" }]
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Condition: CreateVpc
+    Properties:
+      Tags: [{ Key: Name, Value: !Sub "${AWS::StackName}" }]
+
+  GatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Condition: CreateVpc
+    Properties:
+      VpcId: !Ref Vpc
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Condition: CreateVpc
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      CidrBlock: !Select [0, !Cidr [!GetAtt Vpc.CidrBlock, 6, 12]]
+      MapPublicIpOnLaunch: true
+      Tags: [{ Key: Name, Value: !Sub "${AWS::StackName}-public-1" }]
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Condition: CreateVpc
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      CidrBlock: !Select [1, !Cidr [!GetAtt Vpc.CidrBlock, 6, 12]]
+      MapPublicIpOnLaunch: true
+      Tags: [{ Key: Name, Value: !Sub "${AWS::StackName}-public-2" }]
+
+  PublicSubnet3:
+    Type: AWS::EC2::Subnet
+    Condition: CreateVpc3
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select [2, !GetAZs ""]
+      CidrBlock: !Select [2, !Cidr [!GetAtt Vpc.CidrBlock, 6, 12]]
+      MapPublicIpOnLaunch: true
+      Tags: [{ Key: Name, Value: !Sub "${AWS::StackName}-public-3" }]
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Condition: CreateVpc
+    Properties:
+      VpcId: !Ref Vpc
+      Tags: [{ Key: Name, Value: !Sub "${AWS::StackName}-public" }]
+
+  PublicDefaultRoute:
+    Type: AWS::EC2::Route
+    Condition: CreateVpc
+    DependsOn: GatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnet1Routes:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: CreateVpc
+    Properties: { SubnetId: !Ref PublicSubnet1, RouteTableId: !Ref PublicRouteTable }
+
+  PublicSubnet2Routes:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: CreateVpc
+    Properties: { SubnetId: !Ref PublicSubnet2, RouteTableId: !Ref PublicRouteTable }
+
+  PublicSubnet3Routes:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: CreateVpc3
+    Properties: { SubnetId: !Ref PublicSubnet3, RouteTableId: !Ref PublicRouteTable }
+
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Condition: CreateNat
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      CidrBlock: !Select [3, !Cidr [!GetAtt Vpc.CidrBlock, 6, 12]]
+      Tags: [{ Key: Name, Value: !Sub "${AWS::StackName}-private-1" }]
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Condition: CreateNat
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      CidrBlock: !Select [4, !Cidr [!GetAtt Vpc.CidrBlock, 6, 12]]
+      Tags: [{ Key: Name, Value: !Sub "${AWS::StackName}-private-2" }]
+
+  PrivateSubnet3:
+    Type: AWS::EC2::Subnet
+    Condition: CreateNat3
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Select [2, !GetAZs ""]
+      CidrBlock: !Select [5, !Cidr [!GetAtt Vpc.CidrBlock, 6, 12]]
+      Tags: [{ Key: Name, Value: !Sub "${AWS::StackName}-private-3" }]
+
+  NatEip:
+    Type: AWS::EC2::EIP
+    Condition: CreateNat
+    Properties:
+      Domain: vpc
+      Tags: [{ Key: Name, Value: !Sub "${AWS::StackName}-egress" }]
+
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Condition: CreateNat
+    Properties:
+      AllocationId: !GetAtt NatEip.AllocationId
+      SubnetId: !Ref PublicSubnet1
+      Tags: [{ Key: Name, Value: !Sub "${AWS::StackName}" }]
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Condition: CreateNat
+    Properties:
+      VpcId: !Ref Vpc
+      Tags: [{ Key: Name, Value: !Sub "${AWS::StackName}-private" }]
+
+  PrivateDefaultRoute:
+    Type: AWS::EC2::Route
+    Condition: CreateNat
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway
+
+  PrivateSubnet1Routes:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: CreateNat
+    Properties: { SubnetId: !Ref PrivateSubnet1, RouteTableId: !Ref PrivateRouteTable }
+
+  PrivateSubnet2Routes:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: CreateNat
+    Properties: { SubnetId: !Ref PrivateSubnet2, RouteTableId: !Ref PrivateRouteTable }
+
+  PrivateSubnet3Routes:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: CreateNat3
+    Properties: { SubnetId: !Ref PrivateSubnet3, RouteTableId: !Ref PrivateRouteTable }
+
+  # Free S3 gateway endpoint: cache and runner downloads stay inside AWS.
+  S3Endpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Condition: CreateVpc
+    Properties:
+      VpcId: !Ref Vpc
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.s3"
+      VpcEndpointType: Gateway
+      RouteTableIds: !If
+        - CreateNat
+        - [!Ref PublicRouteTable, !Ref PrivateRouteTable]
+        - [!Ref PublicRouteTable]
+
+  RunnerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Metadata:
+      cfn-lint:
+        config:
+          ignore_checks: [W1030] # ExistingVpcId is only used when NetworkMode=existing
+    Properties:
+      GroupDescription: truner runners (egress only unless SSH is enabled)
+      VpcId: !If [CreateVpc, !Ref Vpc, !Ref ExistingVpcId]
+      SecurityGroupEgress:
+        - { IpProtocol: "-1", CidrIp: 0.0.0.0/0, Description: all outbound }
+      SecurityGroupIngress: !If
+        - HasSsh
+        - - { IpProtocol: tcp, FromPort: 22, ToPort: 22, CidrIp: !Ref SshCidr, Description: SSH to runners }
+        - !Ref AWS::NoValue
+      Tags: [{ Key: Name, Value: !Sub "${AWS::StackName}-runners" }]
+
+  # ---------------------------------------------------------------- storage
+  DataBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+            BucketKeyEnabled: true
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules: [{ ObjectOwnership: BucketOwnerEnforced }]
+      LifecycleConfiguration:
+        Rules:
+          - { Id: cache, Status: Enabled, Prefix: cache/, ExpirationInDays: !Ref CacheRetentionDays }
+          - { Id: docker, Status: Enabled, Prefix: docker/, ExpirationInDays: !Ref CacheRetentionDays }
+          - { Id: logs, Status: Enabled, Prefix: logs/, ExpirationInDays: !Ref LogRetentionDays }
+          - { Id: bakes, Status: Enabled, Prefix: bakes/, ExpirationInDays: 30 }
+          - { Id: pools, Status: Enabled, Prefix: pools/, ExpirationInDays: 30 }
+          - { Id: multipart, Status: Enabled, AbortIncompleteMultipartUpload: { DaysAfterInitiation: 1 } }
+      Tags: [{ Key: truner:stack, Value: !Ref AWS::StackName }]
+
+  DataBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref DataBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource: [!GetAtt DataBucket.Arn, !Sub "${DataBucket.Arn}/*"]
+            Condition: { Bool: { "aws:SecureTransport": "false" } }
+
+  Table:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Delete
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: pk, AttributeType: S }
+        - { AttributeName: coll, AttributeType: S }
+        - { AttributeName: ts, AttributeType: N }
+      KeySchema:
+        - { AttributeName: pk, KeyType: HASH }
+      GlobalSecondaryIndexes:
+        - IndexName: byColl
+          KeySchema:
+            - { AttributeName: coll, KeyType: HASH }
+            - { AttributeName: ts, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+      TimeToLiveSpecification: { AttributeName: ttl, Enabled: true }
+      Tags: [{ Key: truner:stack, Value: !Ref AWS::StackName }]
+
+  DeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      MessageRetentionPeriod: 1209600
+      SqsManagedSseEnabled: true
+
+  LaunchQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      VisibilityTimeout: 360
+      MessageRetentionPeriod: 86400
+      SqsManagedSseEnabled: true
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt DeadLetterQueue.Arn
+        maxReceiveCount: 5
+
+  CacheRepository:
+    Type: AWS::ECR::Repository
+    Condition: EnableEcr
+    Properties:
+      ImageTagMutability: MUTABLE
+      EmptyOnDelete: true
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {"rules":[{"rulePriority":1,"description":"expire build cache after 14 days","selection":{"tagStatus":"any","countType":"sinceImagePushed","countUnit":"days","countNumber":14},"action":{"type":"expire"}}]}
+      Tags: [{ Key: truner:stack, Value: !Ref AWS::StackName }]
+
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: truner
+      KmsMasterKeyId: alias/aws/sns
+
+  AlertSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasAlertEmail
+    Properties:
+      TopicArn: !Ref AlertTopic
+      Protocol: email
+      Endpoint: !Ref AlertEmail
+
+  # ---------------------------------------------------------------- IAM
+  RunnerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: Role of truner runner machines
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ec2.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns: !If
+        - HasRunnerPolicies
+        - !Split
+          - ","
+          - !Join
+            - ","
+            - - !Sub "arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore"
+              - !Join [",", !Ref RunnerPolicyArns]
+        - [!Sub "arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore"]
+      Policies:
+        - PolicyName: truner-runner
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: CacheObjects
+                Effect: Allow
+                Action: [s3:GetObject, s3:PutObject, s3:DeleteObject, s3:AbortMultipartUpload, s3:ListMultipartUploadParts]
+                Resource:
+                  - !Sub "${DataBucket.Arn}/cache/*"
+                  - !Sub "${DataBucket.Arn}/docker/*"
+              - Sid: ReportObjects
+                Effect: Allow
+                Action: [s3:PutObject]
+                Resource:
+                  - !Sub "${DataBucket.Arn}/logs/*"
+                  - !Sub "${DataBucket.Arn}/bakes/*"
+                  - !Sub "${DataBucket.Arn}/pools/*"
+              - Sid: CacheListing
+                Effect: Allow
+                Action: [s3:ListBucket, s3:ListBucketMultipartUploads]
+                Resource: !GetAtt DataBucket.Arn
+                Condition:
+                  StringLike: { "s3:prefix": ["cache/*", "docker/*"] }
+              - Sid: EcrLogin
+                Effect: Allow
+                Action: [ecr:GetAuthorizationToken]
+                Resource: "*"
+              - Sid: EcrPullAccount
+                Effect: Allow
+                Action: [ecr:BatchCheckLayerAvailability, ecr:GetDownloadUrlForLayer, ecr:BatchGetImage]
+                Resource: !Sub "arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/*"
+              - !If
+                - EnableEcr
+                - Sid: EcrCachePush
+                  Effect: Allow
+                  Action: [ecr:PutImage, ecr:InitiateLayerUpload, ecr:UploadLayerPart, ecr:CompleteLayerUpload, ecr:DescribeImages, ecr:ListImages]
+                  Resource: !GetAtt CacheRepository.Arn
+                - !Ref AWS::NoValue
+
+  RunnerInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles: [!Ref RunnerRole]
+
+  ControlPlaneRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: Role of the truner control plane functions
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+      Policies:
+        - PolicyName: truner-control-plane
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: Launch
+                Effect: Allow
+                Action:
+                  - ec2:RunInstances
+                  - ec2:CreateFleet
+                  - ec2:CreateLaunchTemplate
+                  - ec2:CreateTags
+                  - ec2:CreateImage
+                  - ec2:DescribeInstances
+                  - ec2:DescribeImages
+                  - ec2:DescribeLaunchTemplates
+                  - ec2:DescribeLaunchTemplateVersions
+                  - ec2:DescribeSpotPriceHistory
+                  - ec2:DescribeInstanceTypes
+                  - ec2:DescribeSubnets
+                  - ec2:DescribeAvailabilityZones
+                  - ec2:DescribeSnapshots
+                  - ec2:GetInstanceTypesFromInstanceRequirements
+                Resource: "*"
+              - Sid: ManageOwnResources
+                Effect: Allow
+                Action:
+                  - ec2:TerminateInstances
+                  - ec2:StartInstances
+                  - ec2:StopInstances
+                  - ec2:ModifyInstanceAttribute
+                  - ec2:DeleteLaunchTemplate
+                  - ec2:DeregisterImage
+                  - ec2:DeleteSnapshot
+                Resource: "*"
+                Condition:
+                  StringEquals: { "aws:ResourceTag/truner:stack": !Ref AWS::StackName }
+              - Sid: PassRunnerRole
+                Effect: Allow
+                Action: iam:PassRole
+                Resource: !GetAtt RunnerRole.Arn
+                Condition:
+                  StringEquals: { "iam:PassedToService": ec2.amazonaws.com }
+              - Sid: SpotServiceRoles
+                Effect: Allow
+                Action: iam:CreateServiceLinkedRole
+                Resource: "*"
+                Condition:
+                  StringEquals: { "iam:AWSServiceName": [spot.amazonaws.com, ec2fleet.amazonaws.com] }
+              - Sid: Data
+                Effect: Allow
+                Action: [s3:GetObject, s3:PutObject, s3:DeleteObject, s3:ListBucket, s3:AbortMultipartUpload]
+                Resource: [!GetAtt DataBucket.Arn, !Sub "${DataBucket.Arn}/*"]
+              - Sid: Artifacts
+                Effect: Allow
+                Action: [s3:GetObject]
+                Resource: !Sub "arn:${AWS::Partition}:s3:::${ArtifactsBucket}/*"
+              - Sid: State
+                Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:UpdateItem, dynamodb:DeleteItem, dynamodb:Query]
+                Resource: [!GetAtt Table.Arn, !Sub "${Table.Arn}/index/*"]
+              - Sid: Queue
+                Effect: Allow
+                Action: [sqs:SendMessage, sqs:ReceiveMessage, sqs:DeleteMessage, sqs:GetQueueAttributes, sqs:ChangeMessageVisibility]
+                Resource: !GetAtt LaunchQueue.Arn
+              - Sid: Parameters
+                Effect: Allow
+                Action: [ssm:GetParameter]
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/truner/${AWS::StackName}/*"
+                  - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}::parameter/aws/service/*"
+              - Sid: DecryptParameters
+                Effect: Allow
+                Action: kms:Decrypt
+                Resource: "*"
+                Condition:
+                  StringEquals: { "kms:ViaService": !Sub "ssm.${AWS::Region}.amazonaws.com" }
+              - Sid: Pricing
+                Effect: Allow
+                Action: pricing:GetProducts
+                Resource: "*"
+              - Sid: Alerts
+                Effect: Allow
+                Action: sns:Publish
+                Resource: !Ref AlertTopic
+
+  # ---------------------------------------------------------------- functions
+  WebhookLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/truner/${AWS::StackName}/webhook"
+      RetentionInDays: !Ref LogRetentionDays
+
+  WorkerLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/truner/${AWS::StackName}/worker"
+      RetentionInDays: !Ref LogRetentionDays
+
+  JanitorLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/truner/${AWS::StackName}/janitor"
+      RetentionInDays: !Ref LogRetentionDays
+
+  WebhookFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-webhook"
+      Description: truner webhook receiver
+      Runtime: provided.al2023
+      Architectures: [arm64]
+      Handler: bootstrap
+      Code: { S3Bucket: !Ref ArtifactsBucket, S3Key: !Ref LambdaKey }
+      Role: !GetAtt ControlPlaneRole.Arn
+      MemorySize: 256
+      Timeout: 15
+      LoggingConfig: { LogGroup: !Ref WebhookLogs, LogFormat: Text }
+      Environment:
+        Variables:
+          TRUNER_STACK: !Ref AWS::StackName
+          TRUNER_BUCKET: !Ref DataBucket
+          TRUNER_ARTIFACTS_BUCKET: !Ref ArtifactsBucket
+          TRUNER_TABLE: !Ref Table
+          TRUNER_QUEUE_URL: !Ref LaunchQueue
+          TRUNER_APP_PARAM: !Sub "/truner/${AWS::StackName}/github-app"
+          TRUNER_PUBLIC_SUBNETS: !If
+            - CreateVpc
+            - !If
+              - ThreeAZ
+              - !Join [",", [!Ref PublicSubnet1, !Ref PublicSubnet2, !Ref PublicSubnet3]]
+              - !Join [",", [!Ref PublicSubnet1, !Ref PublicSubnet2]]
+            - !Join [",", !Ref ExistingPublicSubnetIds]
+          TRUNER_PRIVATE_SUBNETS: !If
+            - CreateNat
+            - !If
+              - ThreeAZ
+              - !Join [",", [!Ref PrivateSubnet1, !Ref PrivateSubnet2, !Ref PrivateSubnet3]]
+              - !Join [",", [!Ref PrivateSubnet1, !Ref PrivateSubnet2]]
+            - !If [CreateVpc, "", !Join [",", !Ref ExistingPrivateSubnetIds]]
+          TRUNER_SECURITY_GROUP: !GetAtt RunnerSecurityGroup.GroupId
+          TRUNER_INSTANCE_PROFILE_ARN: !GetAtt RunnerInstanceProfile.Arn
+          TRUNER_ECR_REPO_URI: !If [EnableEcr, !GetAtt CacheRepository.RepositoryUri, ""]
+          TRUNER_LABEL_PREFIX: !Ref LabelPrefix
+          TRUNER_ALERT_TOPIC_ARN: !Ref AlertTopic
+          TRUNER_VERSION: !Ref Version
+          TRUNER_SSH_ENABLED: !If [HasSsh, "true", "false"]
+          TRUNER_DAILY_REPORT: !Ref DailyReport
+          TRUNER_JANITOR_FUNCTION: !Sub "${AWS::StackName}-janitor"
+
+  WorkerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-worker"
+      Description: truner runner launcher
+      Runtime: provided.al2023
+      Architectures: [arm64]
+      Handler: bootstrap
+      Code: { S3Bucket: !Ref ArtifactsBucket, S3Key: !Ref LambdaKey }
+      Role: !GetAtt ControlPlaneRole.Arn
+      MemorySize: 512
+      Timeout: 60
+      LoggingConfig: { LogGroup: !Ref WorkerLogs, LogFormat: Text }
+      Environment:
+        Variables:
+          TRUNER_STACK: !Ref AWS::StackName
+          TRUNER_BUCKET: !Ref DataBucket
+          TRUNER_ARTIFACTS_BUCKET: !Ref ArtifactsBucket
+          TRUNER_TABLE: !Ref Table
+          TRUNER_QUEUE_URL: !Ref LaunchQueue
+          TRUNER_APP_PARAM: !Sub "/truner/${AWS::StackName}/github-app"
+          TRUNER_PUBLIC_SUBNETS: !If
+            - CreateVpc
+            - !If
+              - ThreeAZ
+              - !Join [",", [!Ref PublicSubnet1, !Ref PublicSubnet2, !Ref PublicSubnet3]]
+              - !Join [",", [!Ref PublicSubnet1, !Ref PublicSubnet2]]
+            - !Join [",", !Ref ExistingPublicSubnetIds]
+          TRUNER_PRIVATE_SUBNETS: !If
+            - CreateNat
+            - !If
+              - ThreeAZ
+              - !Join [",", [!Ref PrivateSubnet1, !Ref PrivateSubnet2, !Ref PrivateSubnet3]]
+              - !Join [",", [!Ref PrivateSubnet1, !Ref PrivateSubnet2]]
+            - !If [CreateVpc, "", !Join [",", !Ref ExistingPrivateSubnetIds]]
+          TRUNER_SECURITY_GROUP: !GetAtt RunnerSecurityGroup.GroupId
+          TRUNER_INSTANCE_PROFILE_ARN: !GetAtt RunnerInstanceProfile.Arn
+          TRUNER_ECR_REPO_URI: !If [EnableEcr, !GetAtt CacheRepository.RepositoryUri, ""]
+          TRUNER_LABEL_PREFIX: !Ref LabelPrefix
+          TRUNER_ALERT_TOPIC_ARN: !Ref AlertTopic
+          TRUNER_VERSION: !Ref Version
+          TRUNER_SSH_ENABLED: !If [HasSsh, "true", "false"]
+          TRUNER_DAILY_REPORT: !Ref DailyReport
+          TRUNER_JANITOR_FUNCTION: !Sub "${AWS::StackName}-janitor"
+
+
+  JanitorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-janitor"
+      Description: truner janitor (cleanup, retries, images, pools, reports)
+      Runtime: provided.al2023
+      Architectures: [arm64]
+      Handler: bootstrap
+      Code: { S3Bucket: !Ref ArtifactsBucket, S3Key: !Ref LambdaKey }
+      Role: !GetAtt ControlPlaneRole.Arn
+      MemorySize: 1024
+      Timeout: 600
+      LoggingConfig: { LogGroup: !Ref JanitorLogs, LogFormat: Text }
+      Environment:
+        Variables:
+          TRUNER_STACK: !Ref AWS::StackName
+          TRUNER_BUCKET: !Ref DataBucket
+          TRUNER_ARTIFACTS_BUCKET: !Ref ArtifactsBucket
+          TRUNER_TABLE: !Ref Table
+          TRUNER_QUEUE_URL: !Ref LaunchQueue
+          TRUNER_APP_PARAM: !Sub "/truner/${AWS::StackName}/github-app"
+          TRUNER_PUBLIC_SUBNETS: !If
+            - CreateVpc
+            - !If
+              - ThreeAZ
+              - !Join [",", [!Ref PublicSubnet1, !Ref PublicSubnet2, !Ref PublicSubnet3]]
+              - !Join [",", [!Ref PublicSubnet1, !Ref PublicSubnet2]]
+            - !Join [",", !Ref ExistingPublicSubnetIds]
+          TRUNER_PRIVATE_SUBNETS: !If
+            - CreateNat
+            - !If
+              - ThreeAZ
+              - !Join [",", [!Ref PrivateSubnet1, !Ref PrivateSubnet2, !Ref PrivateSubnet3]]
+              - !Join [",", [!Ref PrivateSubnet1, !Ref PrivateSubnet2]]
+            - !If [CreateVpc, "", !Join [",", !Ref ExistingPrivateSubnetIds]]
+          TRUNER_SECURITY_GROUP: !GetAtt RunnerSecurityGroup.GroupId
+          TRUNER_INSTANCE_PROFILE_ARN: !GetAtt RunnerInstanceProfile.Arn
+          TRUNER_ECR_REPO_URI: !If [EnableEcr, !GetAtt CacheRepository.RepositoryUri, ""]
+          TRUNER_LABEL_PREFIX: !Ref LabelPrefix
+          TRUNER_ALERT_TOPIC_ARN: !Ref AlertTopic
+          TRUNER_VERSION: !Ref Version
+          TRUNER_SSH_ENABLED: !If [HasSsh, "true", "false"]
+          TRUNER_DAILY_REPORT: !Ref DailyReport
+          TRUNER_JANITOR_FUNCTION: !Sub "${AWS::StackName}-janitor"
+
+
+  WorkerQueueMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !GetAtt LaunchQueue.Arn
+      FunctionName: !Ref WorkerFunction
+      BatchSize: 5
+      FunctionResponseTypes: [ReportBatchItemFailures]
+
+  HttpApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub "${AWS::StackName}-webhook"
+      Description: GitHub App webhook endpoint for truner
+      ProtocolType: HTTP
+      Target: !GetAtt WebhookFunction.Arn
+
+  WebhookInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref WebhookFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*"
+
+  JanitorSchedule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: truner janitor
+      ScheduleExpression: rate(2 minutes)
+      Targets: [{ Id: janitor, Arn: !GetAtt JanitorFunction.Arn }]
+
+  SpotInterruptionRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: truner spot interruption warnings
+      EventPattern:
+        source: [aws.ec2]
+        detail-type: [EC2 Spot Instance Interruption Warning]
+      Targets: [{ Id: janitor, Arn: !GetAtt JanitorFunction.Arn }]
+
+  InstanceStateRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: truner instance state changes
+      EventPattern:
+        source: [aws.ec2]
+        detail-type: [EC2 Instance State-change Notification]
+        detail:
+          state: [stopped, terminated]
+      Targets: [{ Id: janitor, Arn: !GetAtt JanitorFunction.Arn }]
+
+  JanitorSchedulePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref JanitorFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt JanitorSchedule.Arn
+
+  SpotRulePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref JanitorFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt SpotInterruptionRule.Arn
+
+  StateRulePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref JanitorFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt InstanceStateRule.Arn
+
+  # ---------------------------------------------------------------- observability
+  DeadLetterAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: truner could not process launch requests (messages in the dead-letter queue)
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions: [{ Name: QueueName, Value: !GetAtt DeadLetterQueue.QueueName }]
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+
+  Dashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub "${AWS::StackName}"
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {"type":"metric","x":0,"y":0,"width":12,"height":6,"properties":{"title":"Jobs","region":"${AWS::Region}","stat":"Sum","period":300,
+              "metrics":[["Truner","JobsQueued","Stack","${AWS::StackName}"],[".","JobsCompleted",".","."],[".","InstancesLaunched",".","."],[".","LaunchFailures",".","."]]}},
+            {"type":"metric","x":12,"y":0,"width":12,"height":6,"properties":{"title":"Active runners","region":"${AWS::Region}","stat":"Maximum","period":120,
+              "metrics":[["Truner","ActiveRunners","Stack","${AWS::StackName}"]]}},
+            {"type":"metric","x":0,"y":6,"width":12,"height":6,"properties":{"title":"Queue to start (seconds)","region":"${AWS::Region}","period":300,
+              "metrics":[["Truner","QueueToStartSeconds","Stack","${AWS::StackName}",{"stat":"p50","label":"p50"}],["...",{"stat":"p90","label":"p90"}],["Truner","QueueToLaunchSeconds","Stack","${AWS::StackName}",{"stat":"p50","label":"launch p50"}]]}},
+            {"type":"metric","x":12,"y":6,"width":12,"height":6,"properties":{"title":"Estimated cost (USD)","region":"${AWS::Region}","stat":"Sum","period":3600,
+              "metrics":[["Truner","JobCostUSD","Stack","${AWS::StackName}"]]}},
+            {"type":"metric","x":0,"y":12,"width":12,"height":6,"properties":{"title":"Spot","region":"${AWS::Region}","stat":"Sum","period":3600,
+              "metrics":[["Truner","SpotFallbacks","Stack","${AWS::StackName}"],[".","SpotInterruptions",".","."],[".","CapacityErrors",".","."],[".","Relaunches",".","."]]}},
+            {"type":"metric","x":12,"y":12,"width":12,"height":6,"properties":{"title":"Pools and images","region":"${AWS::Region}","stat":"Sum","period":3600,
+              "metrics":[["Truner","PoolHits","Stack","${AWS::StackName}"],[".","PoolMisses",".","."],[".","ImagesBaked",".","."],[".","WebhookRedeliveries",".","."]]}}
+          ]
+        }
+
+Outputs:
+  Version:
+    Value: !Ref Version
+  WebhookUrl:
+    Description: GitHub App webhook URL
+    Value: !Sub "${HttpApi.ApiEndpoint}/webhook"
+  DataBucket:
+    Value: !Ref DataBucket
+  Table:
+    Value: !Ref Table
+  LaunchQueueUrl:
+    Value: !Ref LaunchQueue
+  DeadLetterQueueUrl:
+    Value: !Ref DeadLetterQueue
+  WebhookFunction:
+    Value: !Ref WebhookFunction
+  WorkerFunction:
+    Value: !Ref WorkerFunction
+  JanitorFunction:
+    Value: !Ref JanitorFunction
+  RunnerRoleArn:
+    Value: !GetAtt RunnerRole.Arn
+  RunnerSecurityGroup:
+    Value: !GetAtt RunnerSecurityGroup.GroupId
+  AlertTopicArn:
+    Value: !Ref AlertTopic
+  AppParameter:
+    Value: !Sub "/truner/${AWS::StackName}/github-app"
+  EcrCacheRepository:
+    Value: !If [EnableEcr, !GetAtt CacheRepository.RepositoryUri, ""]
+  StaticEgressIp:
+    Value: !If [CreateNat, !Ref NatEip, ""]
+  DashboardUrl:
+    Value: !Sub "https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${AWS::StackName}"
+  LogGroups:
+    Value: !Sub "/truner/${AWS::StackName}/{webhook,worker,janitor}"
