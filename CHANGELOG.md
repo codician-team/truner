@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.1.2
 
 - Faster job starts on baked images. The agent starts from its own systemd unit as soon
   as the network is up instead of after cloud-init's later stages. It no longer walks the
@@ -10,6 +10,10 @@
 - Instance types with hard disk instance storage (`d2`, `d3`, `d3en`, `h1`) are no longer
   chosen automatically. Their disks are never used for the work directory, which took
   minutes to set up.
+- Measured on codician's own CI: jobs now start 44 to 66 seconds after they are queued,
+  instead of 1m15s to 3m15s, and the test job runs in 2m33s instead of 8m20s.
+- truner's own CI, docs and releases run on truner. Pull requests from forks keep
+  GitHub-hosted runners.
 
 ## v0.1.1
 
