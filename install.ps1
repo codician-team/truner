@@ -32,5 +32,12 @@ if (-not ($userPath -split ";" | Where-Object { $_ -eq $dir })) {
   $env:Path += ";$dir"
   Write-Host "Added $dir to your PATH (open a new terminal to use it everywhere)."
 }
-Write-Host "Installed truner to $dir\truner.exe"
-Write-Host "Next: truner install"
+$installed = Join-Path $dir "truner.exe"
+Write-Host "Installed $(& $installed version) to $installed"
+# Another truner earlier on the PATH would run instead, with its version.
+$found = (Get-Command truner -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1).Source
+if ($found -and $found -ne $installed) {
+  $other = try { & $found version } catch { "unknown version" }
+  Write-Warning "``truner`` runs $found ($other), which comes first on your PATH. Remove it, or put $dir before it in your PATH."
+}
+Write-Host "Next: truner install, or truner upgrade for an existing installation"

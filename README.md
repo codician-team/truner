@@ -311,7 +311,7 @@ truner cache ls|stats|purge   # the S3 cache
 truner config edit            # account-wide config (profiles, pools, limits)
 truner pools                  # warm pool status
 truner quota --request 512    # raise EC2 vCPU quotas
-truner upgrade                # update to this CLI's version
+truner upgrade                # update the CLI, then the installation
 truner uninstall              # remove everything
 ```
 

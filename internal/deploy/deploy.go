@@ -25,6 +25,24 @@ import (
 //go:embed template.yaml
 var Template string
 
+// LockPolicy is the stack policy of an installation: it denies every update.
+// This CLI lifts it for its own updates with OpenPolicy. A CLI from before the
+// lock does not, so its update, which would deploy its own older version,
+// fails and rolls back without changing anything.
+const (
+	LockPolicy = `{"Statement":[{"Effect":"Deny","Action":"Update:*","Principal":"*","Resource":"*"}]}`
+	OpenPolicy = `{"Statement":[{"Effect":"Allow","Action":"Update:*","Principal":"*","Resource":"*"}]}`
+)
+
+// Locked reports whether an installation has the lock policy.
+func Locked(ctx context.Context, cfg aws.Config, name string) (bool, error) {
+	out, err := cloudformation.NewFromConfig(cfg).GetStackPolicy(ctx, &cloudformation.GetStackPolicyInput{StackName: &name})
+	if err != nil {
+		return false, err
+	}
+	return aws.ToString(out.StackPolicyBody) == LockPolicy, nil
+}
+
 // ArtifactsBucketName is the per-account, per-region bucket for deploy artifacts.
 func ArtifactsBucketName(account, region string) string {
 	return fmt.Sprintf("truner-artifacts-%s-%s", account, region)
@@ -184,6 +202,7 @@ func Deploy(ctx context.Context, cfg aws.Config, name, templateURL string, param
 		out, err = cf.CreateStack(ctx, &cloudformation.CreateStackInput{
 			StackName: &name, TemplateURL: &templateURL, Parameters: cfParams, Capabilities: caps, Tags: tags,
 			OnFailure: cftypes.OnFailureDelete, EnableTerminationProtection: aws.Bool(false),
+			StackPolicyBody: aws.String(LockPolicy),
 		})
 		if err == nil {
 			stackID = aws.ToString(out.StackId)
@@ -197,16 +216,25 @@ func Deploy(ctx context.Context, cfg aws.Config, name, templateURL string, param
 			}
 		}
 		var out *cloudformation.UpdateStackOutput
+		// Lifts the lock for this update only, and sets it on installations
+		// from before it.
 		out, err = cf.UpdateStack(ctx, &cloudformation.UpdateStackInput{
 			StackName: &name, TemplateURL: &templateURL, Parameters: cfParams, Capabilities: caps, Tags: tags,
+			StackPolicyBody: aws.String(LockPolicy), StackPolicyDuringUpdateBody: aws.String(OpenPolicy),
 		})
 		if err == nil {
 			stackID = aws.ToString(out.StackId)
 		}
 		if err != nil && strings.Contains(err.Error(), "No updates are to be performed") {
 			fmt.Fprintln(w, "Stack is already up to date.")
+			if _, err := cf.SetStackPolicy(ctx, &cloudformation.SetStackPolicyInput{StackName: &name, StackPolicyBody: aws.String(LockPolicy)}); err != nil {
+				return nil, fmt.Errorf("lock the installation against older CLIs: %w", err)
+			}
 			return Describe(ctx, cfg, name)
 		}
+	}
+	if err != nil && strings.Contains(err.Error(), "SetStackPolicy") {
+		return nil, fmt.Errorf("%w (the AWS identity running truner needs cloudformation:SetStackPolicy: truner locks the installation so that older CLIs cannot downgrade it)", err)
 	}
 	if err != nil {
 		return nil, err

@@ -59,10 +59,18 @@ the version `truner status` prints, and install the latest CLI:
 curl -fsSL https://raw.githubusercontent.com/codician-team/truner/main/install.sh | sh
 ```
 
-Current CLIs say so on every command when they are older than the installation. Do not
-run `truner upgrade` with the older CLI: it deploys its own version, which takes away
-what came since. `upgrade` and `install` refuse that unless you pass
-`--allow-downgrade`.
+Current CLIs say so on every command when they are older than the installation, and
+`truner upgrade` updates the CLI first. A CLI older than v0.1.4 deploys its own version
+without asking, which takes away what came since: v0.1.1 removed the MicroVM roles from
+a v0.1.3 installation. Installations deployed by v0.1.5 or newer are locked against
+that: an older CLI's update fails with `Action denied by stack policy` and rolls back
+without changing anything. To check which CLI runs, use `truner version`, and on macOS
+and Linux `which -a truner`: the install script warns when another `truner` comes first
+on the `PATH`.
+
+If an installation must be changed outside truner, lift the lock for one update:
+`aws cloudformation update-stack ... --stack-policy-during-update-body
+'{"Statement":[{"Effect":"Allow","Action":"Update:*","Principal":"*","Resource":"*"}]}'`.
 
 ## A job fails right at the start with a truner error
 

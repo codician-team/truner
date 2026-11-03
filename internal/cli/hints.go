@@ -29,8 +29,8 @@ func cliSkew(installed string) (older bool, msg string) {
 		return false, ""
 	}
 	if c, ok := version.Compare(version.Version, installed); ok && c < 0 {
-		return true, fmt.Sprintf("this CLI is %s, older than the installation (%s): it may not know the installation's newer labels, images and checks. Update it: %s",
-			version.Version, installed, cliInstallCommand())
+		return true, fmt.Sprintf("this CLI is %s, older than the installation (%s): it may not know the installation's newer labels, images and checks. Update it: truner upgrade --cli-only",
+			version.Version, installed)
 	}
 	return false, fmt.Sprintf("installation runs %s but this CLI is %s - run `truner upgrade`", installed, version.Version)
 }

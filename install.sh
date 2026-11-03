@@ -49,9 +49,16 @@ if [ -z "$dir" ]; then
 fi
 mkdir -p "$dir"
 mv "$tmp/truner" "$dir/truner"
-echo "Installed truner to $dir/truner"
+echo "Installed $("$dir/truner" version) to $dir/truner"
 case ":$PATH:" in
-  *":$dir:"*) ;;
+  *":$dir:"*)
+    # Another truner earlier on the PATH would run instead, with its version.
+    found=$(command -v truner || true)
+    if [ -n "$found" ] && [ "$found" != "$dir/truner" ]; then
+      echo "Warning: \`truner\` runs $found ($("$found" version 2>/dev/null || echo "unknown version")), which comes first on your PATH." >&2
+      echo "Remove it, or put $dir before $(dirname "$found") in your PATH." >&2
+    fi
+    ;;
   *) echo "Add $dir to your PATH to use it." ;;
 esac
-echo "Next: truner install"
+echo "Next: truner install, or truner upgrade for an existing installation"
