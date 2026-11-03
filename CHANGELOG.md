@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.1.3
 
 - **MicroVMs (beta).** The `micro` label (or `micro: true` in a runner profile) runs a job
   on a Lambda MicroVM with 1, 2 or 4 vCPU instead of EC2. A MicroVM resumes from a
