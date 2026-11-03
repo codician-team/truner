@@ -31,11 +31,13 @@ func MicroDiskGiB(vcpu int) int {
 }
 
 // toMicro turns a resolved spec into a MicroVM spec, or explains why the job
-// needs an EC2 machine.
-func toMicro(js *JobSpec, spec RunnerSpec) error {
+// needs an EC2 machine. arch is the architecture the job asks for, if any.
+func toMicro(js *JobSpec, spec RunnerSpec, arch string) error {
 	switch {
 	case js.Platform() == PlatformWindows:
 		return errors.New("micro machines run Linux; remove micro for Windows jobs")
+	case arch == ArchX64:
+		return errors.New("micro machines are arm64 only; remove micro or arch=x64")
 	case js.GPU > 0:
 		return errors.New("micro machines have no GPU; remove micro or gpu")
 	case js.NVMe:

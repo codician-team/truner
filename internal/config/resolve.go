@@ -294,15 +294,17 @@ func (r Resolver) Resolve(l labels.Labels) (*JobSpec, error) {
 		return pool, nil
 	}
 
+	asked := fromLabels.Arch
 	if runnerName != "" {
 		prof, err := r.LookupRunner(runnerName)
 		if err != nil {
 			return nil, err
 		}
 		Merge(&spec, prof)
+		asked = firstNonEmptyString(fromLabels.Arch, prof.Arch)
 	}
 	Merge(&spec, fromLabels)
-	js, err := r.finalize(spec, runnerName)
+	js, err := r.finalize(spec, runnerName, asked)
 	if err != nil {
 		return nil, err
 	}
@@ -333,7 +335,7 @@ func (r Resolver) ResolvePool(name string) (*JobSpec, error) {
 	Merge(&spec, p.Spec)
 	// Pool machines are stopped between uses, which spot does not allow.
 	spec.Spot = SpotOff
-	js, err := gr.finalize(spec, p.Runner)
+	js, err := gr.finalize(spec, p.Runner, "")
 	if err != nil {
 		return nil, fmt.Errorf("pool %q: %w", name, err)
 	}
@@ -341,7 +343,9 @@ func (r Resolver) ResolvePool(name string) (*JobSpec, error) {
 	return js, nil
 }
 
-func (r Resolver) finalize(spec RunnerSpec, runnerName string) (*JobSpec, error) {
+// finalize resolves the merged spec. asked is the arch the job's labels or
+// runner profile ask for, if any.
+func (r Resolver) finalize(spec RunnerSpec, runnerName, asked string) (*JobSpec, error) {
 	if err := spec.Validate(); err != nil {
 		return nil, err
 	}
@@ -407,6 +411,13 @@ func (r Resolver) finalize(spec RunnerSpec, runnerName string) (*JobSpec, error)
 	if archSuffix != "" {
 		arch = archSuffix
 	}
+	// The arch the job itself asks for, not its defaults' or its image's.
+	if asked != "" {
+		asked, _ = NormalizeArch(asked)
+	}
+	if archSuffix != "" {
+		asked = archSuffix
+	}
 	if len(img.Archs) == 1 {
 		only, _ := NormalizeArch(img.Archs[0])
 		if spec.Arch != "" && spec.Arch != ArchX64 && arch != only {
@@ -448,7 +459,7 @@ func (r Resolver) finalize(spec RunnerSpec, runnerName string) (*JobSpec, error)
 		js.IdleTimeout = DefaultIdleMin
 	}
 	if BoolOr(spec.Micro, false) {
-		if err := toMicro(js, spec); err != nil {
+		if err := toMicro(js, spec, asked); err != nil {
 			return nil, err
 		}
 	}
@@ -633,4 +644,13 @@ func BoolOr(b *bool, def bool) bool {
 		return def
 	}
 	return *b
+}
+
+func firstNonEmptyString(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
