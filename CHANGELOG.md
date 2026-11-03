@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.1.4
 
 - **Repository snapshots for `actions/checkout`.** Every machine fetched the whole
   repository from GitHub, which took 11–102 seconds for a 237 MB repository on EC2
@@ -29,6 +29,8 @@
   every janitor run, once GitHub confirms that the job is still queued and no other
   machine with its labels is coming. The machine it had still books its cost to the job
   that ran on it, and is ended when that job is over.
+- The janitor no longer ends the MicroVM of a cancelled job while another job with the
+  same labels runs on it.
 - **One run token per job.** All examples and docs now use
   `run=${{ github.run_id }}-<job>` (with the matrix value in matrix jobs), and so do
   truner's own workflows. A token per job keeps every job on the machine launched for it.
