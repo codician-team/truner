@@ -11,6 +11,8 @@
   launch attempt, so a job gave up after about 15 minutes while the alert email said it
   would keep retrying. Quota retries now run every minute without using up attempts,
   until the job has waited an hour since it was queued.
+- New page: [Field report: MicroVMs](docs/field-report-microvms.md), what moving one
+  repository's CI onto MicroVMs with v0.1.3 to v0.1.5 found, with suggested improvements.
 
 ## v0.1.5
 
