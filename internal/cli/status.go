@@ -18,7 +18,9 @@ import (
 
 	"github.com/codician-team/truner/internal/config"
 	"github.com/codician-team/truner/internal/controlplane"
+	"github.com/codician-team/truner/internal/deploy"
 	"github.com/codician-team/truner/internal/github"
+	"github.com/codician-team/truner/internal/version"
 )
 
 func (a *app) statusCmd() *cobra.Command {
@@ -163,6 +165,12 @@ func (a *app) doctor(ctx context.Context) error {
 	}
 	if older, msg := cliSkew(e.out("Version")); msg != "" && !older {
 		u.warn("%s", msg)
+	}
+	if latest := newerRelease(ctx); latest != "" {
+		u.warn("this CLI is %s and truner %s is out: `truner upgrade` updates the CLI and the installation", version.Version, latest)
+	}
+	if locked, err := deploy.Locked(ctx, e.cfg, e.name); err == nil && !locked {
+		u.warn("a truner CLI older than v0.1.5 can still downgrade this installation: run `truner upgrade` once to lock it")
 	}
 	resp, err := e.invoke(ctx, controlplane.AdminRequest{Truner: "ping"}, false)
 	switch {

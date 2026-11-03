@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased
+
+- **`truner upgrade` updates the CLI first.** A v0.1.1 CLI on a Mac ran `truner upgrade`
+  on two v0.1.3 installations and deployed v0.1.1: it said "it will be upgraded",
+  removed the MicroVM roles and reported "healthy (version v0.1.1)". Now, like
+  `bun upgrade`, `upgrade` and `install` download the latest release when it is newer,
+  check it against the release's checksums, replace the CLI and run the command again
+  with it. `--cli-only` updates only the CLI, `--no-cli-update` deploys the CLI's own
+  version.
+- **Installations are locked against older CLIs.** The stack gets a CloudFormation stack
+  policy that denies every update, and the CLI lifts it for its own update only. A CLI
+  older than v0.1.5 cannot lift it, so its update fails and rolls back without changing
+  anything. The AWS identity that runs truner needs `cloudformation:SetStackPolicy`.
+  `truner doctor` reports installations that are not locked yet.
+- **Clear versions in `install` and `upgrade`.** Step 1 says "it will be upgraded from
+  v0.1.3 to v0.1.5" (or redeployed, or DOWNGRADED with `--allow-downgrade`). The end
+  says "Installation "truner" is upgraded from v0.1.3 to v0.1.5", with links to the
+  release notes, the issue tracker and the commit log, and warns when the control plane
+  reports another version than the one deployed. `truner version` and `truner doctor`
+  say when a newer release is out.
+- **The install scripts warn about another `truner` on the `PATH`.** They print the
+  version they installed, and warn when another `truner` comes first on the `PATH` and
+  would run instead.
+
 ## v0.1.4
 
 - **Repository snapshots for `actions/checkout`.** Every machine fetched the whole

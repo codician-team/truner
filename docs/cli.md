@@ -66,17 +66,30 @@ truner login
 
 ### upgrade
 
-Upgrades an installation to the version of this CLI. Install the new CLI first.
+Updates the CLI to the latest release, then the installation to it.
 
 ```bash
-truner upgrade [--allow-downgrade]
+truner upgrade [--cli-only] [--no-cli-update] [--allow-downgrade]
 ```
 
-A CLI older than the installation refuses, because deploying its version would take
-away what came since. Install the latest CLI instead, or pass `--allow-downgrade` to go
-back on purpose (`install` takes the same flag). Every command that reads the
-installation warns when the CLI is older: an older CLI may not know its labels and
-images, for example `micro` in `explain` and MicroVM images in `images list`.
+- When a newer release is out, the CLI downloads it, checks it against the release's
+  checksums, replaces itself and runs the same command again with the new version.
+  `install` does the same. `--cli-only` stops after the CLI, `--no-cli-update` deploys
+  the CLI's own version.
+- Step 1 says what happens to the installation, for example
+  `it will be upgraded from v0.1.3 to v0.1.5`, and the end says what happened, with links
+  to the release notes, the issue tracker and the commit log.
+- A CLI older than the installation refuses and changes nothing, because deploying its
+  version would take away what came since. Pass `--allow-downgrade` to go back on purpose
+  (`install` takes the same flag).
+- The installation is locked with a CloudFormation stack policy that denies every
+  update. The CLI lifts it for its own update only. A CLI older than v0.1.5 does not, so
+  its update fails and rolls back without changing anything. The AWS identity that runs
+  truner needs `cloudformation:SetStackPolicy`.
+
+Every command that reads the installation warns when the CLI is older: an older CLI may
+not know its labels and images, for example `micro` in `explain` and MicroVM images in
+`images list`. `truner version` and `truner doctor` say when a newer release is out.
 
 ### uninstall
 

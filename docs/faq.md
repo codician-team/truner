@@ -119,8 +119,10 @@ runners.
 
 ### How do I upgrade?
 
-Install the newer CLI and run `truner upgrade`. Machines that are running finish their
-jobs, and new jobs use the new version.
+Run `truner upgrade`. It updates the CLI to the latest release first, then the
+installation. Machines that are running finish their jobs, and new jobs use the new
+version. With a CLI older than v0.1.5, install the latest CLI first
+(see [getting started](getting-started.md)).
 
 ### How do I remove it?
 

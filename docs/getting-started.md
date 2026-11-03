@@ -142,10 +142,11 @@ problem it finds.
 ## Upgrading and removing
 
 ```bash
-truner upgrade      # update the installation to this CLI's version
+truner upgrade      # update the CLI to the latest release, then the installation
 truner uninstall    # remove everything truner created
 ```
 
-Install a newer CLI first, then run `truner upgrade`. `uninstall` terminates every
+`truner upgrade` never downgrades an installation, and a CLI older than v0.1.5 cannot
+change an installation that a newer one has deployed. `uninstall` terminates every
 machine and deletes the baked images, the data bucket and the stack. After that, delete
 the GitHub App in your GitHub settings, because GitHub has no API for removing apps.

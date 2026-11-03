@@ -66,7 +66,12 @@ Get started:  truner install`,
 		a.imagesCmd(), a.cacheCmd(), a.configCmd(), a.poolsCmd(),
 		a.connectCmd(), a.quotaCmd(), a.githubCmd(), a.loginCmd(), a.versionCmd(),
 	)
+	removeOldBinary()
 	if err := root.ExecuteContext(context.Background()); err != nil {
+		var code exitCode
+		if errors.As(err, &code) {
+			return int(code)
+		}
 		fmt.Fprintln(os.Stderr, "Error:", err)
 		return 1
 	}
@@ -77,7 +82,12 @@ func (a *app) versionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
 		Short: "Print the version",
-		Run:   func(cmd *cobra.Command, args []string) { fmt.Println(version.String()) },
+		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Println(version.String())
+			if latest := newerRelease(cmd.Context()); latest != "" {
+				fmt.Fprintf(os.Stderr, "%s truner %s is out: `truner upgrade --cli-only` updates the CLI, `truner upgrade` the CLI and the installation\n", a.ui.yellow("!"), latest)
+			}
+		},
 	}
 }
 

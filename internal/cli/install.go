@@ -43,6 +43,8 @@ type installFlags struct {
 	logDays        int
 	upgradeOnly    bool
 	allowDowngrade bool
+	noCLIUpdate    bool
+	cliOnly        bool
 }
 
 var stackNameRe = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9-]{0,40}$`)
@@ -87,6 +89,7 @@ stopped and reuses a pending GitHub link.`,
 	fl.IntVar(&f.cacheDays, "cache-days", 10, "days to keep magic cache entries and Docker S3 caches")
 	fl.IntVar(&f.logDays, "log-days", 14, "days to keep machine and control plane logs (1, 3, 5, 7, 14, 30, 60, 90, ...)")
 	fl.BoolVar(&f.allowDowngrade, "allow-downgrade", false, "deploy this CLI's version even if the installation runs a newer one")
+	fl.BoolVar(&f.noCLIUpdate, "no-cli-update", false, "deploy this CLI's version without updating the CLI to the latest release first")
 	return cmd
 }
 
@@ -95,11 +98,15 @@ func (a *app) upgradeCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "upgrade",
 		Short: "Upgrade an installation to this version of truner",
+		Long: "Upgrade the CLI to the latest release, then the installation to it. " +
+			"An installation that runs a newer version than the CLI is never downgraded without --allow-downgrade.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.install(cmd.Context(), f, cmd)
 		},
 	}
 	cmd.Flags().BoolVar(&f.allowDowngrade, "allow-downgrade", false, "deploy this CLI's version even if the installation runs a newer one")
+	cmd.Flags().BoolVar(&f.noCLIUpdate, "no-cli-update", false, "deploy this CLI's version without updating the CLI to the latest release first")
+	cmd.Flags().BoolVar(&f.cliOnly, "cli-only", false, "only update the CLI, not the installation")
 	return cmd
 }
 
@@ -109,6 +116,39 @@ func (a *app) install(ctx context.Context, f *installFlags, cmd *cobra.Command) 
 		return fmt.Errorf("invalid installation name %q (letters, digits and dashes; max 41)", a.stack)
 	}
 	u.printf("%s %s %s\n", u.bold("truner"), u.dim(version.Version), u.dim("- GitHub Actions runners in your own AWS account"))
+	verb := "install"
+	if f.upgradeOnly {
+		verb = "upgrade"
+	}
+	// install and upgrade deploy this CLI's own version, so the CLI first
+	// updates itself to the latest release and runs the command again.
+	if latest := newerRelease(ctx); latest != "" {
+		switch {
+		case f.noCLIUpdate:
+			u.warn("truner %s is out; this CLI deploys its own version, %s (--no-cli-update)", latest, version.Version)
+		case os.Getenv(updatedEnv) != "":
+			// Updated a moment ago, and a newer release is out already.
+		default:
+			u.printf("\n%s %s\n", u.bold(fmt.Sprintf("truner %s is out!", latest)), u.dim("You're on "+version.Version+"."))
+			exe, err := selfUpdate(ctx, u, latest)
+			if err != nil {
+				u.action(fmt.Sprintf("Update the CLI, then run `truner %s` again:", verb), cliInstallCommand())
+				return fmt.Errorf("could not update the CLI at %s: %v (or pass --no-cli-update to deploy %s)", exe, err, version.Version)
+			}
+			u.ok("Updated the CLI at %s to %s", exe, latest)
+			u.printf("\n")
+			return runUpdated(exe)
+		}
+	}
+	if f.cliOnly {
+		if from := os.Getenv(updatedEnv); from != "" {
+			u.printf("\n%s\n", u.green(u.bold(fmt.Sprintf("Welcome to truner %s!", version.Version))))
+			releaseLinks(u, from, version.Version)
+		} else {
+			u.ok("The CLI is up to date (%s)", version.Version)
+		}
+		return nil
+	}
 	const steps = 5
 
 	// 1. AWS account
@@ -124,14 +164,22 @@ func (a *app) install(ctx context.Context, f *installFlags, cmd *cobra.Command) 
 	if err != nil && !errors.Is(err, deploy.ErrNoStack) {
 		return err
 	}
+	prev := ""
 	if existing != nil {
+		prev = existing.Outputs["Version"]
 		// An older CLI would replace the installation with its own version and
 		// take away what came since (MicroVMs, for a v0.1.1 CLI on v0.1.3).
-		if older, _ := cliSkew(existing.Outputs["Version"]); older && !f.allowDowngrade {
-			return fmt.Errorf("the installation runs %s, newer than this CLI (%s). Update the CLI first: %s (or pass --allow-downgrade to go back to %s)",
-				existing.Outputs["Version"], version.Version, cliInstallCommand(), version.Version)
+		older, _ := cliSkew(prev)
+		if older && !f.allowDowngrade {
+			u.action(fmt.Sprintf("Update the CLI, then run `truner %s` again:", verb), cliInstallCommand())
+			return fmt.Errorf("the installation runs %s, newer than this CLI (%s): nothing was changed (pass --allow-downgrade to go back to %s on purpose)",
+				prev, version.Version, version.Version)
 		}
-		u.ok("Existing installation found (%s, version %s): it will be upgraded", existing.Status, existing.Outputs["Version"])
+		if older {
+			u.warn("Existing installation found (%s): it will be DOWNGRADED from %s to %s, without what came since", existing.Status, prev, version.Version)
+		} else {
+			u.ok("Existing installation found (%s): it will be %s", existing.Status, change(prev, version.Version))
+		}
 	} else if f.upgradeOnly {
 		return errNotInstalled
 	}
@@ -278,6 +326,8 @@ func (a *app) install(ctx context.Context, f *installFlags, cmd *cobra.Command) 
 			msg = resp.Message
 		}
 		u.warn("control plane check failed: %v %s (run `truner doctor`)", err, msg)
+	} else if resp.Version != ver {
+		u.warn("the control plane answers, but runs %s instead of %s (run `truner doctor`)", resp.Version, ver)
 	} else {
 		u.ok("Control plane is healthy (version %s)", resp.Version)
 	}
@@ -290,7 +340,13 @@ func (a *app) install(ctx context.Context, f *installFlags, cmd *cobra.Command) 
 		u.info("%s", u.dim("Jobs work right away; they boot faster once the images are ready."))
 	}
 	prefix := firstNonEmpty(st.Parameters["LabelPrefix"], "truner")
-	u.printf("\n%s\n\n", u.green(u.bold("truner is ready!")))
+	if existing != nil {
+		u.printf("\n%s\n", u.green(u.bold(fmt.Sprintf("Installation %q is %s.", a.stack, change(prev, ver)))))
+		releaseLinks(u, prev, ver)
+		u.printf("\nNext:  truner doctor   (verify everything)    truner status   truner jobs\n")
+		return nil
+	}
+	u.printf("\n%s\n\n", u.green(u.bold(fmt.Sprintf("truner %s is ready!", ver))))
 	u.printf("Use it in any workflow of the repositories the app is installed on:\n\n")
 	u.printf("    jobs:\n      build:\n        runs-on: %s\n\n", exampleLabel(prefix, "cpu=4", "build"))
 	u.printf("Give every job its own run= token (its name after the run id), so no other job takes its machine.\n")
