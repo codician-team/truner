@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.1
+
+- Magic cache: a key that is already stored or still uploading is now refused with twirp
+  `already_exists` (HTTP 409), like GitHub. Parallel `docker buildx` builds with
+  `type=gha` cache exports no longer fail with "failed to reserve cache".
+
 ## v0.1.0
 
 First release.
