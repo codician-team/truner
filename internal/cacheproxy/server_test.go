@@ -38,22 +38,32 @@ func token(ac string) string {
 func twirp(t *testing.T, base, method, auth string, req any) map[string]any {
 	t.Helper()
 	body, _ := json.Marshal(req)
+	status, raw := postTwirp(t, base, method, auth, "application/json", body)
+	var out map[string]any
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatal(err)
+	}
+	if status != 200 {
+		t.Fatalf("%s: status %d: %v", method, status, out)
+	}
+	return out
+}
+
+func postTwirp(t *testing.T, base, method, auth, contentType string, body []byte) (int, []byte) {
+	t.Helper()
 	r, _ := http.NewRequest(http.MethodPost, base+twirpPrefix+method, bytes.NewReader(body))
-	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("Content-Type", contentType)
 	r.Header.Set("Authorization", auth)
 	resp, err := http.DefaultClient.Do(r)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer resp.Body.Close()
-	var out map[string]any
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+	out, err := io.ReadAll(resp.Body)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if resp.StatusCode != 200 {
-		t.Fatalf("%s: status %d: %v", method, resp.StatusCode, out)
-	}
-	return out
+	return resp.StatusCode, out
 }
 
 func put(t *testing.T, url string, body []byte) {
@@ -99,11 +109,6 @@ func TestV2RoundTripWithBlocks(t *testing.T) {
 	if res["ok"] != true {
 		t.Fatalf("finalize failed: %v", res)
 	}
-	// Second create on the same key is refused.
-	res = twirp(t, ts.URL, "CreateCacheEntry", auth, map[string]any{"key": "deps-abc", "version": "v1"})
-	if res["ok"] != false {
-		t.Fatalf("expected duplicate create to fail: %v", res)
-	}
 
 	res = twirp(t, ts.URL, "GetCacheEntryDownloadURL", auth, map[string]any{"key": "deps-zzz", "restore_keys": []string{"deps-"}, "version": "v1"})
 	if res["ok"] != true || res["matched_key"] != "deps-abc" {
@@ -120,6 +125,31 @@ func TestV2RoundTripWithBlocks(t *testing.T) {
 	}
 	if resp.Header.Get("Content-Length") != "10000" {
 		t.Fatalf("content-length = %q", resp.Header.Get("Content-Length"))
+	}
+}
+
+// A taken key gets the twirp error GitHub returns. BuildKit's gha exporter
+// skips a layer only on already_exists; an ok=false answer fails the build.
+func TestCreateTakenKey(t *testing.T) {
+	_, ts, _ := newTestServer(t)
+	auth := token(`[{"Scope":"refs/heads/main","Permission":3}]`)
+
+	twirp(t, ts.URL, "CreateCacheEntry", auth, map[string]any{"key": "uploading", "version": "v"})
+	res := twirp(t, ts.URL, "CreateCacheEntry", auth, map[string]any{"key": "stored", "version": "v"})
+	put(t, res["signed_upload_url"].(string), []byte("data"))
+
+	for _, key := range []string{"uploading", "stored"} {
+		js, _ := json.Marshal(map[string]any{"key": key, "version": "v"})
+		pb := &pbWriter{}
+		pb.str(2, key)
+		pb.str(3, "v")
+		for ct, body := range map[string][]byte{"application/json": js, "application/protobuf": pb.b} {
+			status, raw := postTwirp(t, ts.URL, "CreateCacheEntry", auth, ct, body)
+			var e struct{ Code, Msg string }
+			if err := json.Unmarshal(raw, &e); err != nil || status != http.StatusConflict || e.Code != "already_exists" || e.Msg == "" {
+				t.Errorf("%s (%s): got %d %s, want 409 already_exists", key, ct, status, raw)
+			}
+		}
 	}
 }
 

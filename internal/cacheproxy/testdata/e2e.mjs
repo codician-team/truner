@@ -47,6 +47,20 @@ async function roundTrip(name, mb) {
   console.log(`[${name}] OK`);
 }
 
+// The proxy refuses a taken key with HTTP 409 like GitHub does. The toolkit
+// must only log that and return -1, never fail the step.
+async function saveExisting() {
+  const dir = path.join(work, 'dup');
+  makeData(dir, 1);
+  const key = `dup-${Date.now()}`;
+  const id = await cache.saveCache([dir], key);
+  if (id <= 0) throw new Error(`first save of ${key} failed: ${id}`);
+  const again = await cache.saveCache([dir], key);
+  if (again !== -1) throw new Error(`expected -1 when saving existing key ${key}, got ${again}`);
+  console.log('[dup] OK');
+}
+
 await roundTrip('small', 3);
 await roundTrip('large', 200);
+await saveExisting();
 console.log('ALL OK');
