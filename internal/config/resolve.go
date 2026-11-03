@@ -23,6 +23,9 @@ type JobSpec struct {
 	GPU      int      `json:"gpu,omitempty"`
 	NVMe     bool     `json:"nvme,omitempty"`
 
+	Micro          bool `json:"micro,omitempty"`          // Lambda MicroVM instead of EC2
+	MicroMemoryMiB int  `json:"microMemoryMiB,omitempty"` // baseline memory of the MicroVM
+
 	Image     string    `json:"image"`
 	ImageSpec ImageSpec `json:"imageSpec"`
 	Spot      SpotMode  `json:"spot"`
@@ -57,6 +60,9 @@ func (s *JobSpec) Platform() string {
 
 // Summary is a short human readable description, e.g. "4 vCPU / 16+ GiB x64, spot".
 func (s *JobSpec) Summary() string {
+	if s.Micro {
+		return fmt.Sprintf("MicroVM %d vCPU / %d GiB, bursting to %d vCPU / %d GiB, linux arm64", s.CPU.Min, s.RAM.Min, 4*s.CPU.Min, s.RAM.Max)
+	}
 	var b strings.Builder
 	if len(s.Types) > 0 {
 		b.WriteString(strings.Join(s.Types, "|"))
@@ -108,6 +114,9 @@ func Merge(dst *RunnerSpec, src RunnerSpec) {
 	}
 	if src.NVMe != nil {
 		dst.NVMe = boolPtr(*src.NVMe)
+	}
+	if src.Micro != nil {
+		dst.Micro = boolPtr(*src.Micro)
 	}
 	if src.Image != "" {
 		dst.Image = src.Image
@@ -438,6 +447,11 @@ func (r Resolver) finalize(spec RunnerSpec, runnerName string) (*JobSpec, error)
 	if js.IdleTimeout == 0 {
 		js.IdleTimeout = DefaultIdleMin
 	}
+	if BoolOr(spec.Micro, false) {
+		if err := toMicro(js, spec); err != nil {
+			return nil, err
+		}
+	}
 	return js, nil
 }
 
@@ -525,7 +539,7 @@ func FromLabels(v map[string]string) (spec RunnerSpec, runner string, warnings [
 				return spec, "", nil, bad(fmt.Errorf("must be a GPU count"))
 			}
 			spec.GPU = n
-		case "nvme", "private", "ssh":
+		case "nvme", "private", "ssh", "micro":
 			b, e := labels.ParseBool(val)
 			if e != nil {
 				return spec, "", nil, bad(e)
@@ -533,6 +547,8 @@ func FromLabels(v map[string]string) (spec RunnerSpec, runner string, warnings [
 			switch k {
 			case "nvme":
 				spec.NVMe = &b
+			case "micro":
+				spec.Micro = &b
 			case "private":
 				spec.Private = &b
 			case "ssh":

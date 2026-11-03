@@ -40,7 +40,7 @@ per-minute markup, no runner VMs idling, and no Kubernetes cluster to babysit.
 - [Costs](#costs)
 - [Security](#security)
 - [FAQ](#faq)
-- Docs: [AI agents](docs/ai-agents.md) · [labels](docs/labels.md) · [configuration](docs/configuration.md) · [caching](docs/caching.md) · [images](docs/images.md) · [warm pools](docs/pools.md) · [networking & access](docs/networking.md) · [architecture](docs/architecture.md) · [troubleshooting](docs/troubleshooting.md)
+- Docs: [AI agents](docs/ai-agents.md) · [labels](docs/labels.md) · [configuration](docs/configuration.md) · [caching](docs/caching.md) · [images](docs/images.md) · [warm pools](docs/pools.md) · [MicroVMs](docs/microvms.md) · [networking & access](docs/networking.md) · [architecture](docs/architecture.md) · [troubleshooting](docs/troubleshooting.md)
 
 ## Features
 
@@ -53,6 +53,8 @@ per-minute markup, no runner VMs idling, and no Kubernetes cluster to babysit.
   selection to pick the cheapest suitable type, or pin `family=c7a+m7a` / `type=c7i.4xlarge`.
 - 🧠 **x64, Arm64 (Graviton), NVIDIA GPUs and Windows Server (beta)** from the same label syntax.
 - ⚡ **Warm pools** of stopped, pre-provisioned machines for ~10 second starts.
+- 🪶 **MicroVMs for short jobs (beta).** `truner/micro` runs linters and checks on a Lambda
+  MicroVM resumed from a snapshot, with no machine boot. Heavy jobs stay on EC2.
 - 🧱 **Self-maintaining images.** truner bakes optimized AMIs the first time an image is
   used and rebuilds them weekly; until they are ready, jobs still run on the base image.
 - 💽 **Local NVMe** instance storage is detected, striped (RAID 0) and used for the work

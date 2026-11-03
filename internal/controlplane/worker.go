@@ -159,6 +159,19 @@ func (cp *ControlPlane) launchForJob(ctx context.Context, job *Job) error {
 	}
 	runnerName := fmt.Sprintf("truner-%d-%s", job.JobID, randHex(3))
 
+	if spec.Micro && fatal == "" {
+		reason := "the MicroVM that was started for it did not run it"
+		if !job.NoMicro {
+			var done bool
+			if done, reason, err = cp.launchMicroJob(ctx, gh, job, spec, runnerName, rel); done || err != nil {
+				return err
+			}
+		}
+		cp.Log.Info("micro job runs on EC2", "job", job.JobID, "reason", reason)
+		spec = spec.WithoutMicro(reason)
+		runnerName = fmt.Sprintf("truner-%d-%s", job.JobID, randHex(3))
+	}
+
 	// Warm pools: start a stopped, pre-provisioned machine.
 	if spec.Pool != "" && fatal == "" {
 		r, err := cp.claimPoolInstance(ctx, gh, job, spec, runnerName, rel)
@@ -229,18 +242,51 @@ func (cp *ControlPlane) launchForJob(ctx context.Context, job *Job) error {
 	return nil
 }
 
+// launchMicroJob runs a micro job on a MicroVM. When it returns false
+// without an error, reason says why the job needs an EC2 machine instead.
+func (cp *ControlPlane) launchMicroJob(ctx context.Context, gh *github.Client, job *Job, spec *config.JobSpec, runnerName string, rel *runnerRelease) (done bool, reason string, err error) {
+	img, reason := cp.MicroImage(ctx, spec.CPU.Min, rel)
+	if img == nil {
+		return false, reason, nil
+	}
+	jit, err := gh.GenerateJITConfig(ctx, job.InstallationID, job.Owner, job.Repo, runnerName, job.Labels)
+	if err != nil {
+		var ge *github.Error
+		if errors.As(err, &ge) && (ge.Status == 403 || ge.Status == 404) {
+			return false, "", fmt.Errorf("cannot register a runner on %s: the GitHub App needs Administration: write on the repository, "+
+				"and the organization must allow repository-level self-hosted runners (Settings > Actions > Runners): %w", job.FullName(), err)
+		}
+		return false, "", &retryError{err: fmt.Errorf("generate runner config: %w", err), delay: backoff(job.Attempts)}
+	}
+	ac := cp.agentConfig(ctx, job, spec, nil, runnerName, jit.EncodedJITConfig, rel, "")
+	microAgentConfig(ac, img)
+	r, reason := cp.launchMicro(ctx, job, spec, img, ac)
+	if r == nil {
+		gh.DeleteRunner(ctx, job.InstallationID, job.Owner, job.Repo, jit.Runner.ID)
+		return false, reason, nil
+	}
+	return true, "", cp.recordLaunch(ctx, job, spec, r, runnerName, jit.Runner.ID, nil, false)
+}
+
 func (cp *ControlPlane) recordLaunch(ctx context.Context, job *Job, spec *config.JobSpec, r *LaunchResult, runnerName string, runnerID int64, img *ResolvedImage, fromPool bool) error {
 	if runnerID == 0 {
 		runnerID = r.RunnerID
 	}
-	price, err := cp.HourlyPrice(ctx, r.InstanceType, r.AZ, r.Lifecycle, spec.Platform())
-	if err != nil {
+	var price float64
+	var err error
+	if spec.Micro {
+		price = MicroHourlyPrice(spec.CPU.Min)
+	} else if price, err = cp.HourlyPrice(ctx, r.InstanceType, r.AZ, r.Lifecycle, spec.Platform()); err != nil {
 		cp.Log.Warn("price lookup failed", "type", r.InstanceType, "err", err)
+	}
+	disk := spec.Disk
+	if spec.Micro {
+		disk = 0 // included in the MicroVM price
 	}
 	set := map[string]any{
 		"status": StatusLaunched, "runnerName": runnerName, "runnerId": runnerID, "instanceId": r.InstanceID,
 		"instanceType": r.InstanceType, "lifecycle": r.Lifecycle, "az": r.AZ, "image": spec.Image, "platform": spec.Platform(),
-		"diskGiB": spec.Disk, "price": price, "launchedAt": time.Now().Unix(), "fellBack": r.FellBack,
+		"diskGiB": disk, "price": price, "launchedAt": time.Now().Unix(), "fellBack": r.FellBack,
 		"launchMillis": r.Took.Milliseconds(), "keepMinutes": spec.Keep, "error": "", "cpu": spec.CPU.Min,
 	}
 	if img != nil {
@@ -248,6 +294,9 @@ func (cp *ControlPlane) recordLaunch(ctx context.Context, job *Job, spec *config
 	}
 	if fromPool {
 		set["pool"] = spec.Pool
+	}
+	if spec.Micro {
+		cp.emit("MicrovmsLaunched", 1, UnitCount)
 	}
 	cp.Log.Info("runner launched", "job", job.JobID, "repo", job.FullName(), "instance", r.InstanceID, "type", r.InstanceType,
 		"lifecycle", r.Lifecycle, "az", r.AZ, "pool", fromPool, "tookMs", r.Took.Milliseconds(), "pricePerHour", price)
@@ -257,7 +306,7 @@ func (cp *ControlPlane) recordLaunch(ctx context.Context, job *Job, spec *config
 	return cp.Store.UpdateJob(ctx, job.JobID, set, nil)
 }
 
-// runningCount counts active machines, cached briefly so bursts of jobs do
+// runningCount counts active machines and MicroVMs, cached briefly so bursts of jobs do
 // not each list every instance.
 func (cp *ControlPlane) runningCount(ctx context.Context) (int, error) {
 	cp.mu.Lock()
@@ -272,10 +321,16 @@ func (cp *ControlPlane) runningCount(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	n := len(insts)
+	if live, err := cp.LiveMicrovms(ctx); err == nil {
+		n += len(live)
+	} else {
+		cp.Log.Warn("could not count MicroVMs", "err", err)
+	}
 	cp.mu.Lock()
-	cp.count, cp.countAt = len(insts)+1, time.Now()
+	cp.count, cp.countAt = n+1, time.Now()
 	cp.mu.Unlock()
-	return len(insts), nil
+	return n, nil
 }
 
 func (cp *ControlPlane) subnets(private bool) []string {

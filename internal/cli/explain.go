@@ -82,6 +82,10 @@ func (a *app) explainCmd() *cobra.Command {
 			}
 			u.printf("%s %s\n\n", u.bold("Resolved:"), spec.Summary())
 			row := func(k, v string) { u.printf("  %-14s %s\n", k, v) }
+			if spec.Micro {
+				explainMicro(u, row, spec)
+				return nil
+			}
 			if spec.Runner != "" {
 				row("runner", spec.Runner)
 			}
@@ -141,6 +145,28 @@ func (a *app) explainCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&offline, "offline", false, "do not contact AWS")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "print the resolved spec as JSON")
 	return cmd
+}
+
+// explainMicro describes a micro job's MicroVM.
+func explainMicro(u *ui, row func(k, v string), spec *config.JobSpec) {
+	v := spec.CPU.Min
+	if spec.Runner != "" {
+		row("runner", spec.Runner)
+	}
+	row("machine", "Lambda MicroVM, resumed from a snapshot")
+	row("vCPU", fmt.Sprintf("%d, bursting to %d", v, 4*v))
+	row("memory", fmt.Sprintf("%d GiB, bursting to %d GiB", spec.RAM.Min, spec.RAM.Max))
+	row("arch", spec.Arch)
+	row("image", "micro (Ubuntu 24.04 userland, no Docker)")
+	row("disk", fmt.Sprintf("%d GiB", spec.Disk))
+	row("cache", spec.Cache)
+	row("timeout", fmt.Sprintf("%d min (idle %d min)", spec.Timeout, spec.IdleTimeout))
+	row("price", fmt.Sprintf("$%.4f/h at baseline, per second, plus up to $%.4f of snapshot reads per start (us-east-1)", controlplane.MicroHourlyPrice(v), controlplane.MicroStartPrice(v)))
+	for _, w := range spec.Warnings {
+		u.warn("%s", w)
+	}
+	u.println()
+	u.printf("%s\n", u.dim("Until the MicroVM image for this size is built (a few minutes after the first micro job), and whenever a MicroVM cannot start, the job runs on an EC2 arm64 machine with the same vCPUs."))
 }
 
 func loadGlobalConfig(ctx context.Context, e *env) (*config.Global, error) {

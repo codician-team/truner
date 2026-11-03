@@ -16,6 +16,7 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	"github.com/aws/aws-sdk-go-v2/service/lambdamicrovms"
 	"github.com/aws/aws-sdk-go-v2/service/pricing"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/sns"
@@ -35,6 +36,7 @@ type ControlPlane struct {
 	Log     *slog.Logger
 	AWS     aws.Config
 	EC2     *ec2.Client
+	Micro   *lambdamicrovms.Client
 	S3      *s3.Client
 	Presign *s3.PresignClient
 	SQS     *sqs.Client
@@ -91,6 +93,7 @@ func NewWithConfig(env *Env, cfg aws.Config) *ControlPlane {
 		Log:        slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})),
 		AWS:        cfg,
 		EC2:        ec2.NewFromConfig(cfg),
+		Micro:      lambdamicrovms.NewFromConfig(cfg),
 		S3:         s3c,
 		Presign:    s3.NewPresignClient(s3c),
 		SQS:        sqs.NewFromConfig(cfg),

@@ -12,6 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	mvmtypes "github.com/aws/aws-sdk-go-v2/service/lambdamicrovms/types"
 
 	"github.com/codician-team/truner/internal/costs"
 	"github.com/codician-team/truner/internal/github"
@@ -38,9 +39,16 @@ func (cp *ControlPlane) RunJanitor(ctx context.Context) error {
 		instances, err = cp.reconcileInstances(ctx)
 		return err
 	})
-	run("jobs", 90*time.Second, func(ctx context.Context) error { return cp.reconcileJobs(ctx, instances) })
+	var microvms map[string]mvmtypes.MicrovmItem
+	run("microvms", 30*time.Second, func(ctx context.Context) error {
+		var err error
+		microvms, err = cp.LiveMicrovms(ctx)
+		return err
+	})
+	run("jobs", 90*time.Second, func(ctx context.Context) error { return cp.reconcileJobs(ctx, instances, microvms) })
 	run("pools", 60*time.Second, func(ctx context.Context) error { return cp.ReconcilePools(ctx, instances) })
 	run("bakes", 60*time.Second, cp.ProcessBakes)
+	run("micro-images", 30*time.Second, cp.ProcessMicroImages)
 	run("launch-templates", 30*time.Second, cp.cleanupLaunchTemplates)
 	run("webhook-redelivery", 30*time.Second, cp.redeliverWebhooks)
 	run("reruns", 30*time.Second, cp.processReruns)
@@ -110,7 +118,7 @@ func (cp *ControlPlane) reconcileInstances(ctx context.Context) ([]ec2types.Inst
 // reconcileJobs repairs jobs stuck between webhook and runner pickup: lost
 // queue messages, crashed workers and machines that died before starting
 // (for example spot interruptions during boot).
-func (cp *ControlPlane) reconcileJobs(ctx context.Context, instances []ec2types.Instance) error {
+func (cp *ControlPlane) reconcileJobs(ctx context.Context, instances []ec2types.Instance, microvms map[string]mvmtypes.MicrovmItem) error {
 	byID := map[string]ec2types.Instance{}
 	for _, i := range instances {
 		byID[aws.ToString(i.InstanceId)] = i
@@ -152,7 +160,16 @@ func (cp *ControlPlane) reconcileJobs(ctx context.Context, instances []ec2types.
 			if alive && (inst.State.Name == ec2types.InstanceStateNameShuttingDown || inst.State.Name == ec2types.InstanceStateNameTerminated) {
 				alive = false
 			}
+			if isMicroVM(j.InstanceID) {
+				if microvms == nil {
+					continue // the MicroVM list failed: liveness unknown
+				}
+				_, alive = microvms[j.InstanceID]
+			}
 			idleLimit := 25 * time.Minute
+			if isMicroVM(j.InstanceID) {
+				idleLimit = 5 * time.Minute // its runner starts within seconds
+			}
 			if (!alive && age > 90*time.Second) || (alive && age > idleLimit) {
 				if ghCalls >= 40 {
 					continue
@@ -167,6 +184,9 @@ func (cp *ControlPlane) reconcileJobs(ctx context.Context, instances []ec2types.
 				cp.checkUnpickedJob(ctx, gh, j, alive)
 			}
 		}
+	}
+	if len(microvms) > 0 {
+		cp.reconcileMicrovms(ctx, microvms, jobs)
 	}
 	return nil
 }
@@ -206,6 +226,9 @@ func (cp *ControlPlane) checkUnpickedJob(ctx context.Context, gh *github.Client,
 	set := map[string]any{"status": StatusQueued, "attempts": j.Attempts + 1, "error": reason, "instanceId": "", "runnerId": 0}
 	if j.Interrupted || j.Lifecycle == "spot" && !alive {
 		set["forceOnDemand"] = true
+	}
+	if isMicroVM(j.InstanceID) {
+		set["noMicro"] = true
 	}
 	if err := cp.Store.UpdateJob(ctx, j.JobID, set, StatusIn(StatusLaunched)); err == nil {
 		cp.enqueue(ctx, j.JobID, 0)

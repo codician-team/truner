@@ -95,7 +95,7 @@ func (a *Agent) Main(ctx context.Context) (code int) {
 	}()
 	var err error
 	switch a.Cfg.Mode {
-	case agentcfg.ModeRun:
+	case agentcfg.ModeRun, agentcfg.ModeMicro:
 		err = a.runJob(ctx)
 	case agentcfg.ModeBake:
 		err = a.bake(ctx)
@@ -120,6 +120,11 @@ func (a *Agent) finish(stop bool) {
 	defer cancel()
 	a.Log.Info("agent finished", "took", time.Since(a.started).Round(time.Second))
 	a.uploadLog(ctx)
+	if a.micro() {
+		// A MicroVM cannot power itself off: the control plane terminates it
+		// when GitHub reports the job done.
+		return
+	}
 	if a.NoShutdown {
 		a.Log.Info("not shutting down (--no-shutdown)")
 		return
@@ -141,6 +146,8 @@ func (a *Agent) timed(name string, fn func() error) error {
 	a.Log.Info("step done", "step", name, "took", time.Since(start).Round(time.Millisecond), "err", err)
 	return err
 }
+
+func (a *Agent) micro() bool { return a.Cfg.Mode == agentcfg.ModeMicro }
 
 func (a *Agent) warn(msg string) {
 	a.mu.Lock()

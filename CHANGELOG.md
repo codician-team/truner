@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **MicroVMs (beta).** The `micro` label (or `micro: true` in a runner profile) runs a job
+  on a Lambda MicroVM with 1, 2 or 4 vCPU instead of EC2. A MicroVM resumes from a
+  snapshot with the runner already in memory, so short jobs such as linters and checks
+  skip the machine boot. truner builds the MicroVM images on first use and after
+  upgrades. Until an image is ready, and whenever a MicroVM cannot run a job, the job
+  runs on an EC2 Graviton machine of the same size. MicroVMs are Arm64 only and have no
+  Docker, and jobs run as root there. `truner upgrade` adds the MicroVM roles and log
+  group to existing installations. In a first test in us-east-1, micro jobs were running
+  6–9 seconds after they were queued.
 - The runner prefetch reads only the runner and the Node.js build that actions run on,
   not every bundled Node.js, so it competes less with the job for the volume.
 - Workflows and documentation examples use the current major versions of the GitHub

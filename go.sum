@@ -46,6 +46,8 @@ github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.20.8 h1:RS1Wt+K0r4X0ci
 github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.20.8/go.mod h1:adMnTy5kyoUW86jhXnGSVc/mvMQI4GZd1qYWMeaS8M8=
 github.com/aws/aws-sdk-go-v2/service/lambda v1.114.0 h1:UjM7apSnJ8BYMs+AxJlK04eawpVUYify9VXxhvCtJ+w=
 github.com/aws/aws-sdk-go-v2/service/lambda v1.114.0/go.mod h1:HgkYN4d72Fawg3MAJQepmNnROFoN11XYu14hgFfChTY=
+github.com/aws/aws-sdk-go-v2/service/lambdamicrovms v1.11.5 h1:hj3EsXNQcMU0piiLsiJlE8OHNY9B53zMFwdfuQmyoNs=
+github.com/aws/aws-sdk-go-v2/service/lambdamicrovms v1.11.5/go.mod h1:owxxZPbY7vXr4glfBrMq58elc4podQWa/GH+UCRx5xU=
 github.com/aws/aws-sdk-go-v2/service/pricing v1.51.2 h1:h30+bVFh3ud8jQtrE+nYkC7uY7G9BQgO8Lhn08Acpow=
 github.com/aws/aws-sdk-go-v2/service/pricing v1.51.2/go.mod h1:YUM0X2P9g9OuCW3hq1nvek1dd2kmBX4RhOeNdeoTD3g=
 github.com/aws/aws-sdk-go-v2/service/s3 v1.114.6 h1:to7+Vr3rLkpYRwVKJ5QRriI0eE306vrVN/6TnVHgxvY=

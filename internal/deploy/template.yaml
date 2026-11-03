@@ -298,6 +298,8 @@ Resources:
           - { Id: logs, Status: Enabled, Prefix: logs/, ExpirationInDays: !Ref LogRetentionDays }
           - { Id: bakes, Status: Enabled, Prefix: bakes/, ExpirationInDays: 30 }
           - { Id: pools, Status: Enabled, Prefix: pools/, ExpirationInDays: 30 }
+          - { Id: microvm, Status: Enabled, Prefix: microvm/, ExpirationInDays: 30 }
+          - { Id: microvm-run, Status: Enabled, Prefix: microvm/run/, ExpirationInDays: 1 }
           - { Id: multipart, Status: Enabled, AbortIncompleteMultipartUpload: { DaysAfterInitiation: 1 } }
       Tags: [{ Key: truner:stack, Value: !Ref AWS::StackName }]
 
@@ -440,6 +442,80 @@ Resources:
     Properties:
       Roles: [!Ref RunnerRole]
 
+  # ---------------------------------------------------------------- MicroVMs
+  # Micro jobs run on Lambda MicroVMs. Lambda builds their images with the
+  # build role and runs jobs with the execution role.
+  MicrovmLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/truner/${AWS::StackName}/microvms"
+      RetentionInDays: !Ref LogRetentionDays
+
+  MicrovmBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: Role Lambda builds truner MicroVM images with
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: [sts:AssumeRole, sts:TagSession]
+      Policies:
+        - PolicyName: truner-microvm-build
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: BuildContext
+                Effect: Allow
+                Action: [s3:GetObject]
+                Resource: !Sub "${DataBucket.Arn}/microvm/*"
+              - Sid: Logs
+                Effect: Allow
+                Action: [logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents]
+                Resource:
+                  - !GetAtt MicrovmLogs.Arn
+                  - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda-microvms/${AWS::StackName}-micro-*"
+
+  MicrovmExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: Role of jobs on truner MicroVMs
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: [sts:AssumeRole, sts:TagSession]
+      ManagedPolicyArns: !If [HasRunnerPolicies, !Ref RunnerPolicyArns, !Ref AWS::NoValue]
+      Policies:
+        - PolicyName: truner-microvm-runner
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: CacheObjects
+                Effect: Allow
+                Action: [s3:GetObject, s3:PutObject, s3:DeleteObject, s3:AbortMultipartUpload, s3:ListMultipartUploadParts]
+                Resource:
+                  - !Sub "${DataBucket.Arn}/cache/*"
+                  - !Sub "${DataBucket.Arn}/docker/*"
+              - Sid: ReportObjects
+                Effect: Allow
+                Action: [s3:PutObject]
+                Resource: !Sub "${DataBucket.Arn}/logs/*"
+              - Sid: CacheListing
+                Effect: Allow
+                Action: [s3:ListBucket, s3:ListBucketMultipartUploads]
+                Resource: !GetAtt DataBucket.Arn
+                Condition:
+                  StringLike: { "s3:prefix": ["cache/*", "docker/*"] }
+              - Sid: Logs
+                Effect: Allow
+                Action: [logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents]
+                Resource:
+                  - !GetAtt MicrovmLogs.Arn
+                  - !Sub "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda-microvms/${AWS::StackName}-micro-*"
+
   ControlPlaneRole:
     Type: AWS::IAM::Role
     Properties:
@@ -495,6 +571,39 @@ Resources:
                 Resource: !GetAtt RunnerRole.Arn
                 Condition:
                   StringEquals: { "iam:PassedToService": ec2.amazonaws.com }
+              - Sid: MicrovmImages
+                Effect: Allow
+                Action: [lambda:DeleteMicrovmImage, lambda:DeleteMicrovmImageVersion]
+                Resource: !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:microvm-image:${AWS::StackName}-micro-*"
+              # MicroVMs carry no tags, and which resources Lambda authorizes
+              # these calls on is not documented: the control plane only
+              # touches MicroVMs from its own images.
+              - Sid: Microvms
+                Effect: Allow
+                Action:
+                  - lambda:CreateMicrovmImage
+                  - lambda:UpdateMicrovmImage
+                  - lambda:GetMicrovmImage
+                  - lambda:GetMicrovmImageVersion
+                  - lambda:ListMicrovmImages
+                  - lambda:ListManagedMicrovmImages
+                  - lambda:TagResource
+                  - lambda:RunMicrovm
+                  - lambda:GetMicrovm
+                  - lambda:ListMicrovms
+                  - lambda:TerminateMicrovm
+                Resource: "*"
+              # Image builds and MicroVMs use Lambda's managed network connectors.
+              - Sid: MicrovmNetwork
+                Effect: Allow
+                Action: lambda:PassNetworkConnector
+                Resource: !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:aws:network-connector:*"
+              - Sid: PassMicrovmRoles
+                Effect: Allow
+                Action: iam:PassRole
+                Resource: [!GetAtt MicrovmBuildRole.Arn, !GetAtt MicrovmExecutionRole.Arn]
+                Condition:
+                  StringEquals: { "iam:PassedToService": lambda.amazonaws.com }
               - Sid: SpotServiceRoles
                 Effect: Allow
                 Action: iam:CreateServiceLinkedRole
@@ -605,6 +714,9 @@ Resources:
           TRUNER_SSH_ENABLED: !If [HasSsh, "true", "false"]
           TRUNER_DAILY_REPORT: !Ref DailyReport
           TRUNER_JANITOR_FUNCTION: !Sub "${AWS::StackName}-janitor"
+          TRUNER_MICRO_BUILD_ROLE_ARN: !GetAtt MicrovmBuildRole.Arn
+          TRUNER_MICRO_EXEC_ROLE_ARN: !GetAtt MicrovmExecutionRole.Arn
+          TRUNER_MICRO_LOG_GROUP: !Ref MicrovmLogs
 
   WorkerFunction:
     Type: AWS::Lambda::Function
@@ -650,6 +762,9 @@ Resources:
           TRUNER_SSH_ENABLED: !If [HasSsh, "true", "false"]
           TRUNER_DAILY_REPORT: !Ref DailyReport
           TRUNER_JANITOR_FUNCTION: !Sub "${AWS::StackName}-janitor"
+          TRUNER_MICRO_BUILD_ROLE_ARN: !GetAtt MicrovmBuildRole.Arn
+          TRUNER_MICRO_EXEC_ROLE_ARN: !GetAtt MicrovmExecutionRole.Arn
+          TRUNER_MICRO_LOG_GROUP: !Ref MicrovmLogs
 
 
   JanitorFunction:
@@ -696,6 +811,9 @@ Resources:
           TRUNER_SSH_ENABLED: !If [HasSsh, "true", "false"]
           TRUNER_DAILY_REPORT: !Ref DailyReport
           TRUNER_JANITOR_FUNCTION: !Sub "${AWS::StackName}-janitor"
+          TRUNER_MICRO_BUILD_ROLE_ARN: !GetAtt MicrovmBuildRole.Arn
+          TRUNER_MICRO_EXEC_ROLE_ARN: !GetAtt MicrovmExecutionRole.Arn
+          TRUNER_MICRO_LOG_GROUP: !Ref MicrovmLogs
 
 
   WorkerQueueMapping:
@@ -846,4 +964,4 @@ Outputs:
   DashboardUrl:
     Value: !Sub "https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=${AWS::StackName}"
   LogGroups:
-    Value: !Sub "/truner/${AWS::StackName}/{webhook,worker,janitor}"
+    Value: !Sub "/truner/${AWS::StackName}/{webhook,worker,janitor,microvms}"

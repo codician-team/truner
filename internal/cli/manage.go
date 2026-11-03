@@ -62,6 +62,16 @@ func (a *app) imagesCmd() *cobra.Command {
 			} else {
 				a.ui.table([]string{"IMAGE", "ARCH", "AMI", "STATE", "CREATED", "RUNNER"}, rows)
 			}
+			if micro, _ := e.store().ItemsInColl(ctx, "micro-images"); len(micro) > 0 {
+				a.ui.println()
+				var mrows [][]string
+				for _, it := range micro {
+					mrows = append(mrows, []string{fmt.Sprintf("micro, %d vCPU", it.Int("vcpu")), it.Str("status"), firstNonEmpty(it.Str("imageVersion"), "-"),
+						firstNonEmpty(it.Str("agent"), "-"), firstNonEmpty(it.Str("runner"), "-"), ago(time.Unix(it.Int("ts"), 0)), it.Str("error")})
+				}
+				sort.Slice(mrows, func(i, j int) bool { return mrows[i][0] < mrows[j][0] })
+				a.ui.table([]string{"MICROVM IMAGE", "STATUS", "VERSION", "TRUNER", "RUNNER", "UPDATED", "ERROR"}, mrows)
+			}
 			items, _ := e.store().ItemsInColl(ctx, "bakes")
 			if len(items) > 0 {
 				a.ui.println()

@@ -103,6 +103,7 @@ Profiles (`runners:`), `defaults:` and pool definitions all accept these keys:
 | `arch` | `x64`/`arm64` | `arm64` |
 | `gpu` | number | `1` |
 | `nvme` | bool | `true` |
+| `micro` | bool: run on a Lambda [MicroVM](microvms.md) | `true` |
 | `image` | image name | `ubuntu24-full` |
 | `spot` | `true`/`false`/`only` | `only` |
 | `disk`, `diskIops`, `diskThroughput`, `diskInitRate` | numbers | `200` |

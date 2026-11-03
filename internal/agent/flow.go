@@ -113,14 +113,22 @@ func (a *Agent) prepareMachine(ctx context.Context) error {
 }
 
 func (a *Agent) runJob(ctx context.Context) error {
-	a.loadMetadata(ctx)
-	sctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	go a.watchSpot(sctx)
+	if !a.micro() {
+		a.loadMetadata(ctx)
+		sctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		go a.watchSpot(sctx)
+	}
 
 	fatal := a.Cfg.FatalError
 	dir := a.osRunnerDir()
-	if fatal == "" {
+	if fatal == "" && a.micro() {
+		// The MicroVM image prepared everything; this only downloads a runner
+		// when the job asks for another version than the image has.
+		if err := a.timed("runner", func() error { return a.ensureRunner(ctx, dir) }); err != nil {
+			fatal = "truner could not install the runner: " + err.Error()
+		}
+	} else if fatal == "" {
 		if err := a.prepareMachine(ctx); err != nil {
 			fatal = "truner could not prepare the machine: " + err.Error()
 			a.Log.Error("machine preparation failed", "err", err)
@@ -412,8 +420,20 @@ func (a *Agent) writeRunnerFiles(dir string, cacheOn bool, fatal string) ([]stri
 	if a.Cfg.Platform != "windows" {
 		env["DEBIAN_FRONTEND"] = "noninteractive"
 	}
+	if a.user() == "root" {
+		env["RUNNER_ALLOW_RUNASROOT"] = "1"
+	}
 	for k, v := range readKV(extraEnvFile()) {
 		env[k] = v
+	}
+	if a.micro() {
+		// The execution role's credentials reach the guest through AWS_*
+		// settings rather than IMDS; jobs need them for the AWS CLI and SDKs.
+		for _, kv := range os.Environ() {
+			if k, v, ok := strings.Cut(kv, "="); ok && strings.HasPrefix(k, "AWS_") && k != "AWS_REGION" && k != "AWS_DEFAULT_REGION" {
+				env[k] = v
+			}
+		}
 	}
 	env["PATH"] = a.osBasePath(readLines(extraPathFile()))
 	var jobEnv []string
@@ -471,17 +491,25 @@ func (a *Agent) banner(cacheOn bool) string {
 	cpus, mem := machineSpecs()
 	ready := time.Since(a.started) + a.uptime
 	summary := fmt.Sprintf("truner | %s %s in %s | %d vCPU, %.0f GiB | ready %ds after boot", m.InstanceType, life, m.AZ, cpus, mem, int(ready.Seconds()))
+	machine := fmt.Sprintf("%s (%s) %s in %s", m.InstanceType, life, m.InstanceID, m.AZ)
+	if a.micro() {
+		v := max(a.Cfg.MicroVCPU, 1)
+		summary = fmt.Sprintf("truner | Lambda MicroVM in %s | %d vCPU, %d GiB, bursting to %d vCPU, %d GiB | ready %.1fs after start", a.Cfg.Region, v, 2*v, 4*v, 8*v, ready.Seconds())
+		machine = fmt.Sprintf("Lambda MicroVM %s in %s (linux arm64)", m.InstanceID, a.Cfg.Region)
+	}
 	if a.Cfg.Job.QueuedAt > 0 {
 		summary += fmt.Sprintf(", %ds after the job was queued", time.Now().Unix()-a.Cfg.Job.QueuedAt)
 	}
 	b.WriteString(summary + "\n")
 	b.WriteString("::group::truner runner details\n")
-	fmt.Fprintf(&b, "Machine:    %s (%s) %s in %s\n", m.InstanceType, life, m.InstanceID, m.AZ)
+	fmt.Fprintf(&b, "Machine:    %s\n", machine)
 	if a.Cfg.Job.Spec != "" {
 		fmt.Fprintf(&b, "Requested:  %s\n", a.Cfg.Job.Spec)
 	}
 	img := a.Cfg.ImageName
-	if strings.HasPrefix(a.Cfg.Profile, "baked:") {
+	if a.micro() {
+		img += " (MicroVM snapshot)"
+	} else if strings.HasPrefix(a.Cfg.Profile, "baked:") {
 		img += " (baked image " + m.AMI + ")"
 	} else {
 		img += " (" + m.AMI + ")"
@@ -504,7 +532,11 @@ func (a *Agent) banner(cacheOn bool) string {
 			tl = append(tl, fmt.Sprintf("%s %.1fs", s.name, s.took.Seconds()))
 		}
 	}
-	fmt.Fprintf(&b, "Boot:       machine %.0fs, agent %.1fs [%s]\n", a.uptime.Seconds(), time.Since(a.started).Seconds(), strings.Join(tl, ", "))
+	if a.micro() {
+		fmt.Fprintf(&b, "Boot:       resumed from a snapshot, agent %.1fs [%s]\n", time.Since(a.started).Seconds(), strings.Join(tl, ", "))
+	} else {
+		fmt.Fprintf(&b, "Boot:       machine %.0fs, agent %.1fs [%s]\n", a.uptime.Seconds(), time.Since(a.started).Seconds(), strings.Join(tl, ", "))
+	}
 	if len(a.Cfg.Job.Labels) > 0 {
 		fmt.Fprintf(&b, "Labels:     %s\n", strings.Join(a.Cfg.Job.Labels, ", "))
 	}

@@ -61,6 +61,12 @@ func main() {
 		os.Exit(a.Main(ctx))
 	case "boot":
 		os.Exit(agent.Boot(ctx, logPath()))
+	case "microvm":
+		// The application of a Lambda MicroVM image: serves the lifecycle hooks.
+		fs := flag.NewFlagSet("microvm", flag.ExitOnError)
+		cfgPath := fs.String("config", "/etc/truner/microvm.json", "path to the image's agent config")
+		fs.Parse(os.Args[2:])
+		os.Exit(agent.ServeMicroVM(ctx, *cfgPath, logPath()))
 	case "patch-runner":
 		// truner-agent patch-runner <runner dir>: apply the cache patch (debugging).
 		if len(os.Args) < 3 {
@@ -102,6 +108,7 @@ func usage() {
 Usage:
   truner-agent run --config FILE    run the lifecycle described by FILE
   truner-agent boot                 run the job in this instance's user data (warm pools)
+  truner-agent microvm              serve the lifecycle hooks of a Lambda MicroVM
   truner-agent cache-proxy          serve the magic cache from a local directory (testing)
   truner-agent patch-runner DIR     apply the cache patch to a runner installation
   truner-agent version`)

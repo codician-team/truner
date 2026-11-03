@@ -18,7 +18,16 @@ const (
 	ModeRun  = "run"  // run exactly one job, then terminate
 	ModeBake = "bake" // install the profile, then stop so an AMI can be taken
 	ModePool = "pool" // prepare, then stop and wait to be claimed
+	// ModeMicro runs exactly one job in a Lambda MicroVM. The image config
+	// carries no job: the job's config arrives in the /run hook.
+	ModeMicro = "micro"
 )
+
+// MicroHookPort is where a MicroVM's agent serves the lifecycle hooks.
+const MicroHookPort = 9000
+
+// MicroHookPath prefixes the MicroVM lifecycle hook paths.
+const MicroHookPath = "/aws/lambda-microvms/runtime/v1/"
 
 // UserDataMarker prefixes the config line embedded in user data.
 const UserDataMarker = "TRUNER_CONFIG="
@@ -53,6 +62,7 @@ type Config struct {
 	SSHUsers    []string          `json:"sshUsers,omitempty"`
 	Env         map[string]string `json:"env,omitempty"`
 	UseNVMe     bool              `json:"useNvme"`
+	MicroVCPU   int               `json:"microVcpu,omitempty"` // baseline vCPUs of a MicroVM
 
 	// Lifecycle
 	IdleMinutes int `json:"idleMinutes"`

@@ -29,6 +29,7 @@ with an explanation.
 | `gpu` | `1`, `4`, `true` | `0` | NVIDIA GPUs (use a GPU image, e.g. `runner=gpu-nvidia`) |
 | `nvme` | `true` | `false` | Require local NVMe SSD instance storage. SSD instance storage is used automatically whenever present |
 | `spot` | `true`, `false`, `only` | `true` | `true`: spot with on-demand fallback. `only`: never on-demand |
+| `micro` | `true` | `false` | Run on a Lambda MicroVM (1, 2 or 4 vCPU, Arm64, no Docker) instead of EC2. See [MicroVMs](microvms.md). Alias: `microvm` |
 
 Without `family` or `type`, truner asks EC2 for **all current-generation instance
 types** matching `cpu`/`ram`/`arch`, excluding burstable (t-family), bare metal and

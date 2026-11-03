@@ -80,6 +80,7 @@ type Job struct {
 	MachineDone  int64   `dynamodbav:"machineDoneAt,omitempty"` // when the job on this machine ended
 	Interrupted  bool    `dynamodbav:"interrupted,omitempty"`
 	ForceOD      bool    `dynamodbav:"forceOnDemand,omitempty"`
+	NoMicro      bool    `dynamodbav:"noMicro,omitempty"`  // a MicroVM did not run it: use EC2
 	FellBack     bool    `dynamodbav:"fellBack,omitempty"` // spot → on-demand
 	LaunchMillis int64   `dynamodbav:"launchMillis,omitempty"`
 

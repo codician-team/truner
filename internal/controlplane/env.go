@@ -33,6 +33,9 @@ type Env struct {
 	SSHEnabled         bool
 	DailyReport        bool
 	JanitorFunction    string
+	MicroBuildRoleArn  string // role Lambda builds MicroVM images with
+	MicroExecRoleArn   string // role of the jobs in MicroVMs
+	MicroLogGroup      string // CloudWatch log group of MicroVM images and MicroVMs
 }
 
 // LoadEnv reads the environment.
@@ -54,6 +57,9 @@ func LoadEnv() (*Env, error) {
 		AlertTopicArn:      os.Getenv("TRUNER_ALERT_TOPIC_ARN"),
 		Version:            os.Getenv("TRUNER_VERSION"),
 		JanitorFunction:    os.Getenv("TRUNER_JANITOR_FUNCTION"),
+		MicroBuildRoleArn:  os.Getenv("TRUNER_MICRO_BUILD_ROLE_ARN"),
+		MicroExecRoleArn:   os.Getenv("TRUNER_MICRO_EXEC_ROLE_ARN"),
+		MicroLogGroup:      os.Getenv("TRUNER_MICRO_LOG_GROUP"),
 	}
 	e.SSHEnabled, _ = strconv.ParseBool(os.Getenv("TRUNER_SSH_ENABLED"))
 	e.DailyReport, _ = strconv.ParseBool(os.Getenv("TRUNER_DAILY_REPORT"))
