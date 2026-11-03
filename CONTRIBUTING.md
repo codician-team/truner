@@ -71,6 +71,13 @@ cd docs && npm ci && npm run dev
 The landing page (`docs/index.md`) is built from Vue components in
 `docs/.vitepress/theme/components/landing/`. `npm run build` fails on dead links.
 
+## CI
+
+CI runs on codician's own truner installation (`runs-on: truner-codician/...`), so every
+change is tested on the runners it builds. Pull requests from forks run on GitHub-hosted
+runners instead, because self-hosted machines must not run code from outside the
+organization.
+
 ## Guidelines
 
 - Keep the control plane idempotent: every handler may run twice (webhook redelivery,
