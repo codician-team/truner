@@ -140,3 +140,44 @@ func TestNotMatched(t *testing.T) {
 		t.Fatal("prefix must match exactly")
 	}
 }
+
+func TestMicro(t *testing.T) {
+	js := resolve(t, Resolver{}, "truner/micro/run=1")
+	if !js.Micro || js.CPU.Min != 2 || js.MicroMemoryMiB != 4096 || js.Arch != ArchARM64 || js.Disk != 16 || js.Image != MicroImage || js.Spot != SpotOff {
+		t.Fatalf("unexpected: %+v", js)
+	}
+	if s := js.Summary(); !strings.Contains(s, "MicroVM 2 vCPU / 4 GiB") || !strings.Contains(s, "8 vCPU / 16 GiB") {
+		t.Fatalf("summary: %s", s)
+	}
+	for raw, vcpu := range map[string]int{"truner/micro/cpu=1": 1, "truner/micro/cpu=3": 4, "truner/microvm=true/ram=12": 2, "truner/micro/ram=30": 4} {
+		if js := resolve(t, Resolver{}, raw); js.CPU.Min != vcpu || js.MicroMemoryMiB != vcpu*2048 {
+			t.Errorf("%s: got %d vCPU / %d MiB, want %d vCPU", raw, js.CPU.Min, js.MicroMemoryMiB, vcpu)
+		}
+	}
+	if js := resolve(t, Resolver{}, "truner/micro=false/cpu=8"); js.Micro {
+		t.Fatal("micro=false must stay on EC2")
+	}
+	for _, raw := range []string{"truner/micro/cpu=8", "truner/micro/gpu=1", "truner/micro/nvme", "truner/micro/ssh", "truner/micro/family=c7g", "truner/micro/image=windows2025", "truner/micro/ram=64"} {
+		l, _ := labels.Parse("truner", []string{raw})
+		if _, err := (Resolver{}).Resolve(l); err == nil {
+			t.Errorf("%s: expected error", raw)
+		}
+	}
+
+	g, err := ParseGlobal([]byte("runners:\n  check:\n    micro: true\n    cpu: 1\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := resolve(t, Resolver{Global: g}, "truner/runner=check")
+	if !p.Micro || p.CPU.Min != 1 || p.Disk != 8 {
+		t.Fatalf("profile: %+v", p)
+	}
+
+	ec2 := js.WithoutMicro("no image yet")
+	if ec2.Micro || ec2.Arch != ArchARM64 || ec2.CPU.Min != 2 || ec2.RAM.Min != 8 || ec2.Image != DefaultImage || ec2.Disk != DefaultDiskGiB || ec2.Spot != SpotAuto {
+		t.Fatalf("fallback: %+v", ec2)
+	}
+	if len(ec2.Warnings) != len(js.Warnings)+1 || !strings.Contains(ec2.Warnings[len(ec2.Warnings)-1], "no image yet") {
+		t.Fatalf("fallback warnings: %v", ec2.Warnings)
+	}
+}

@@ -43,6 +43,9 @@ Most of the time goes to EC2 booting the machine. Typically:
 
 - **Baked image:** about 25–45 seconds from queued to running.
 - **Warm pool:** about 10–20 seconds.
+- **MicroVM (beta, `micro` label):** about 6–10 seconds, since the MicroVM resumes from
+  a snapshot with the runner in memory instead of booting. For short jobs without Docker;
+  see [MicroVMs](microvms.md).
 - **First use of an image:** longer, because the software is installed at boot while the
   optimized image is being built.
 - **Windows:** 3–5 minutes.

@@ -12,7 +12,8 @@ truner runs entirely in your AWS account and talks only to GitHub and AWS. There
 third-party service and no telemetry.
 
 **Isolation between jobs.** Each job runs on a newly launched EC2 instance that is
-terminated afterwards. Runner registrations are just-in-time, single-use and scoped to
+terminated afterwards, or for `micro` jobs on its own Lambda MicroVM (a Firecracker VM)
+that is terminated when the job ends. Runner registrations are just-in-time, single-use and scoped to
 the job's repository, so a machine can only ever take a job of that repository.
 
 **What a job can access.** Like any self-hosted runner, a job has root on its machine
@@ -20,6 +21,10 @@ the job's repository, so a machine can only ever take a job of that repository.
 - the machine's IAM role: read/write to the installation's cache prefixes in S3, push to
   the ECR cache repository, SSM core, plus any policies you attach with `--runner-policy`;
 - the instance metadata, including the machine's (already consumed) user data.
+
+A job on a MicroVM has root inside it too and gets the MicroVM execution role instead:
+the same cache prefixes and `--runner-policy` policies, no ECR or SSM. It can reach the
+agent's lifecycle hook port, which accepts the job's configuration only once.
 
 **Trust boundary.** All repositories that use one installation share the cache bucket
 and the machine role. A job of repository A could read or overwrite cache entries of
@@ -45,6 +50,10 @@ repository B. Therefore:
 - The control plane role can launch instances with the runner role only (`iam:PassRole`
   is scoped to it). Destructive EC2 actions (terminate, stop, modify, deregister,
   delete) are limited to resources tagged with the installation's name.
+- MicroVMs carry no tags, and Lambda does not document which resources its MicroVM
+  actions are authorized on, so the control plane's MicroVM permissions apply to the
+  account. It only acts on MicroVMs started from its own images, deleting images is
+  limited to its own image names, and `iam:PassRole` is limited to its two MicroVM roles.
 - The GitHub App requests `administration: write` (required by GitHub to register
   repository runners), `actions: write` (to read jobs and re-run interrupted ones) and
   `contents: read` (for `.github/truner.yml`). Install it only on the repositories that
@@ -53,9 +62,12 @@ repository B. Therefore:
 **Network.** The runner security group allows no inbound traffic unless you pass
 `--ssh-cidr`. Shell access goes through SSM Session Manager. The data bucket blocks
 public access, enforces TLS and is encrypted at rest. Instance volumes are encrypted.
-Instance metadata requires IMDSv2.
+Instance metadata requires IMDSv2. Every MicroVM has an HTTPS endpoint, as Lambda
+requires for the lifecycle hooks; it only accepts requests with a token from
+`lambda:CreateMicrovmAuthToken`, which truner never creates.
 
 **Supply chain.** At boot, machines download the agent from your artifacts bucket
 (pre-signed URL) and the runner from your S3 mirror or GitHub releases. Profile
 installs use the official Ubuntu, Docker, GitHub CLI, AWS CLI, Node.js, Go and Rust
-distribution channels. Baked images remove this dependency at job time.
+distribution channels. Baked images remove this dependency at job time. MicroVM images
+are built from `public.ecr.aws/ubuntu/ubuntu:24.04` and Ubuntu's package archive.

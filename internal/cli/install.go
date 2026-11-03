@@ -380,6 +380,12 @@ func (a *app) uninstallCmd() *cobra.Command {
 					u.ok("Terminated %d machine(s)", len(ids))
 				}
 			}
+			// MicroVM images cannot run without the stack's roles: always removed.
+			if n, err := cp.RemoveMicroVMs(ctx); err != nil && !strings.Contains(err.Error(), "no such host") {
+				u.warn("MicroVM images: %v", err)
+			} else if n > 0 {
+				u.ok("Deleted %d MicroVM image(s)", n)
+			}
 			if !keepImages {
 				imgs, err := e.ec2().DescribeImages(ctx, &ec2.DescribeImagesInput{Owners: []string{"self"}, Filters: []ec2types.Filter{{Name: aws.String("tag:truner:stack"), Values: []string{e.name}}}})
 				if err == nil {

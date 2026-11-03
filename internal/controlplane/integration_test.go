@@ -58,6 +58,25 @@ type fakeAWS struct {
 	nextID    int
 	objects   map[string][]byte // S3, keyed by "bucket/key"
 	images    map[string]string // AMI id -> state
+
+	microImages   map[string]*fakeMicroImage
+	microvms      map[string]*fakeMicrovm
+	microBuilds   []map[string]any // CreateMicrovmImage and UpdateMicrovmImage requests
+	microRuns     []map[string]any // RunMicrovm requests
+	microFail     string           // error type RunMicrovm returns
+	microDeleted  []string         // deleted image versions
+	microLaunched int
+}
+
+type fakeMicroImage struct {
+	name, arn string
+	versions  map[string]string // version -> state
+	latest    int
+}
+
+type fakeMicrovm struct {
+	id, image, state string
+	started          time.Time
 }
 
 func (f *fakeAWS) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -70,6 +89,8 @@ func (f *fakeAWS) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	switch {
+	case strings.HasPrefix(r.URL.Path, "/2025-09-09/"):
+		f.microAPI(w, r, body)
 	case strings.HasPrefix(target, "AmazonSSM."):
 		var in struct {
 			Name, Value string
@@ -124,6 +145,103 @@ func (f *fakeAWS) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.WriteHeader(404)
+	}
+}
+
+// microAPI fakes the Lambda MicroVMs API (restJson1).
+func (f *fakeAWS) microAPI(w http.ResponseWriter, r *http.Request, body []byte) {
+	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/2025-09-09/"), "/")
+	reply := func(code int, v any) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(code)
+		json.NewEncoder(w).Encode(v)
+	}
+	fail := func(code int, typ string) {
+		w.Header().Set("X-Amzn-ErrorType", typ)
+		reply(code, map[string]string{"message": typ})
+	}
+	image := func(id string) *fakeMicroImage {
+		for _, im := range f.microImages {
+			if im.name == id || im.arn == id {
+				return im
+			}
+		}
+		return nil
+	}
+	build := func(code int, im *fakeMicroImage, in map[string]any) {
+		im.latest++
+		im.versions[fmt.Sprint(im.latest)] = "IN_PROGRESS"
+		f.microBuilds = append(f.microBuilds, in)
+		reply(code, map[string]any{"imageArn": im.arn, "imageVersion": fmt.Sprint(im.latest), "name": im.name, "state": "CREATING",
+			"baseImageArn": in["baseImageArn"], "buildRoleArn": in["buildRoleArn"], "codeArtifact": in["codeArtifact"], "createdAt": time.Now().Unix()})
+	}
+	in := map[string]any{}
+	json.Unmarshal(body, &in)
+	switch {
+	case r.Method == http.MethodGet && parts[0] == "managed-microvm-images":
+		reply(200, map[string]any{"items": []map[string]any{{"imageArn": "arn:aws:lambda:us-east-1:aws:microvm-image:al2023-1", "createdAt": time.Now().Unix()}}})
+	case parts[0] == "microvm-images" && len(parts) == 1 && r.Method == http.MethodPost:
+		name, _ := in["name"].(string)
+		if image(name) != nil {
+			fail(409, "ConflictException")
+			return
+		}
+		im := &fakeMicroImage{name: name, arn: "arn:aws:lambda:us-east-1:123456789012:microvm-image:" + name, versions: map[string]string{}}
+		f.microImages[name] = im
+		build(201, im, in)
+	case parts[0] == "microvm-images" && len(parts) == 1 && r.Method == http.MethodGet:
+		var items []map[string]any
+		for _, im := range f.microImages {
+			if strings.Contains(im.name, r.URL.Query().Get("nameFilter")) {
+				items = append(items, map[string]any{"imageArn": im.arn, "name": im.name, "state": "CREATED", "createdAt": time.Now().Unix()})
+			}
+		}
+		reply(200, map[string]any{"items": items})
+	case parts[0] == "microvm-images" && image(parts[1]) == nil:
+		fail(404, "ResourceNotFoundException")
+	case parts[0] == "microvm-images" && len(parts) == 2 && r.Method == http.MethodPut:
+		build(200, image(parts[1]), in)
+	case parts[0] == "microvm-images" && len(parts) == 2 && r.Method == http.MethodDelete:
+		delete(f.microImages, image(parts[1]).name)
+		reply(200, map[string]any{})
+	case parts[0] == "microvm-images" && len(parts) == 4 && r.Method == http.MethodGet:
+		im := image(parts[1])
+		reply(200, map[string]any{"imageArn": im.arn, "imageVersion": parts[3], "state": im.versions[parts[3]], "status": "ACTIVE",
+			"baseImageArn": "base", "buildRoleArn": "role", "codeArtifact": map[string]string{"uri": "s3://x"}, "createdAt": time.Now().Unix(), "stateReason": "Dockerfile step 3 failed"})
+	case parts[0] == "microvm-images" && len(parts) == 4 && r.Method == http.MethodDelete:
+		delete(image(parts[1]).versions, parts[3])
+		f.microDeleted = append(f.microDeleted, parts[3])
+		reply(200, map[string]any{})
+	case parts[0] == "microvms" && len(parts) == 1 && r.Method == http.MethodPost:
+		f.microRuns = append(f.microRuns, in)
+		if p, _ := in["runHookPayload"].(string); len(p) > 4096 {
+			fail(400, "ValidationException")
+			return
+		}
+		if f.microFail != "" {
+			fail(402, f.microFail)
+			return
+		}
+		f.microLaunched++
+		m := &fakeMicrovm{id: fmt.Sprintf("mvm-%04d", f.microLaunched), image: in["imageIdentifier"].(string), state: "PENDING", started: time.Now()}
+		f.microvms[m.id] = m
+		reply(200, map[string]any{"microvmId": m.id, "endpoint": m.id + ".lambda-microvm.us-east-1.on.aws", "imageArn": m.image,
+			"imageVersion": in["imageVersion"], "maximumDurationInSeconds": in["maximumDurationInSeconds"], "startedAt": m.started.Unix(), "state": m.state})
+	case parts[0] == "microvms" && len(parts) == 1 && r.Method == http.MethodGet:
+		var items []map[string]any
+		for _, m := range f.microvms {
+			items = append(items, map[string]any{"microvmId": m.id, "imageArn": m.image, "imageVersion": "1", "startedAt": m.started.Unix(), "state": m.state})
+		}
+		reply(200, map[string]any{"items": items})
+	case parts[0] == "microvms" && len(parts) == 2 && r.Method == http.MethodDelete:
+		if m := f.microvms[parts[1]]; m != nil {
+			m.state = "TERMINATED"
+			reply(200, map[string]any{})
+			return
+		}
+		fail(404, "ResourceNotFoundException")
+	default:
+		fail(404, "UnknownOperationException")
 	}
 }
 
@@ -183,7 +301,11 @@ func (f *fakeAWS) ec2(w http.ResponseWriter, action string, form url.Values) {
 			write(`<imagesSet/>`)
 			return
 		}
-		write(`<imagesSet><item><imageId>ami-base</imageId><architecture>x86_64</architecture><rootDeviceName>/dev/sda1</rootDeviceName><imageState>available</imageState>` +
+		id, arch := "ami-base", "x86_64"
+		if form.Get("ImageId.1") == "ami-base-arm" {
+			id, arch = "ami-base-arm", "arm64"
+		}
+		write(`<imagesSet><item><imageId>` + id + `</imageId><architecture>` + arch + `</architecture><rootDeviceName>/dev/sda1</rootDeviceName><imageState>available</imageState>` +
 			`<creationDate>2026-10-01T00:00:00.000Z</creationDate><platformDetails>Linux/UNIX</platformDetails><blockDeviceMapping><item><deviceName>/dev/sda1</deviceName><ebs><volumeSize>8</volumeSize></ebs></item></blockDeviceMapping></item></imagesSet>`)
 	case "DescribeInstances":
 		want := map[string]bool{}
@@ -368,7 +490,8 @@ func newHarness(t *testing.T) *harness {
 	}
 	ctx := context.Background()
 	u, _ := url.Parse(local)
-	fa := &fakeAWS{ddb: httputil.NewSingleHostReverseProxy(u), params: map[string]string{}, lts: map[string]url.Values{}, instances: map[string]*fakeInstance{}, objects: map[string][]byte{}, images: map[string]string{}}
+	fa := &fakeAWS{ddb: httputil.NewSingleHostReverseProxy(u), params: map[string]string{}, lts: map[string]url.Values{}, instances: map[string]*fakeInstance{}, objects: map[string][]byte{}, images: map[string]string{},
+		microImages: map[string]*fakeMicroImage{}, microvms: map[string]*fakeMicrovm{}}
 	awsSrv := httptest.NewServer(fa)
 	t.Cleanup(awsSrv.Close)
 	fg := &fakeGitHub{jobStatus: map[int64]string{}}
@@ -383,6 +506,8 @@ func newHarness(t *testing.T) *harness {
 	creds, _ := json.Marshal(github.AppCredentials{AppID: 42, Slug: "truner-test", WebhookSecret: secret, PrivateKeyPEM: pemKey})
 	fa.params["/truner/test/github-app"] = string(creds)
 	fa.params["/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id"] = "ami-base"
+	fa.params["/aws/service/canonical/ubuntu/server/24.04/stable/current/arm64/hvm/ebs-gp3/ami-id"] = "ami-base-arm"
+	fa.objects["artifacts/agent/v-test/truner-agent-linux-arm64"] = []byte("fake arm64 agent")
 
 	cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion("us-east-1"),
 		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("AKID", "SECRET", "")),
@@ -416,7 +541,8 @@ func newHarness(t *testing.T) *harness {
 		Stack: "test", Region: "us-east-1", Bucket: "data", ArtifactsBucket: "artifacts", Table: table,
 		QueueURL: awsSrv.URL + "/queue", AppParam: "/truner/test/github-app", PublicSubnets: []string{"subnet-1", "subnet-2"},
 		SecurityGroup: "sg-1", InstanceProfileArn: "arn:aws:iam::1:instance-profile/r", LabelPrefix: "truner", Version: "v-test",
-		ECRRepoURI: "123.dkr.ecr.us-east-1.amazonaws.com/cache",
+		ECRRepoURI:        "123.dkr.ecr.us-east-1.amazonaws.com/cache",
+		MicroBuildRoleArn: "arn:aws:iam::1:role/microvm-build", MicroExecRoleArn: "arn:aws:iam::1:role/microvm-exec", MicroLogGroup: "/truner/test/microvms",
 	}
 	cp := NewWithConfig(env, cfg)
 	return &harness{t: t, cp: cp, aws: fa, gh: fg, secret: secret}
@@ -649,7 +775,7 @@ func TestIntegrationRepoConfigAndRelaunch(t *testing.T) {
 	ctx := context.Background()
 	h.cp.Store.UpdateJob(ctx, 5001, map[string]any{"launchedAt": time.Now().Add(-5 * time.Minute).Unix()}, nil)
 	insts, _ := h.cp.ManagedInstances(ctx)
-	if err := h.cp.reconcileJobs(ctx, insts); err != nil {
+	if err := h.cp.reconcileJobs(ctx, insts, nil); err != nil {
 		t.Fatal(err)
 	}
 	if j := h.job(5001); j.Status != StatusQueued || !j.ForceOD || j.Attempts != 1 {

@@ -12,6 +12,7 @@ fee or subscription.
 | **Baked images** | AMI snapshots, roughly $0.50–$2 per image per month. truner keeps the newest two of each. |
 | **Cache** | S3 storage for what you cache. Entries expire after 10 days by default (`--cache-days`). |
 | **Warm pools** | Each ready machine's stopped EBS volume, for example 40 GiB gp3 ≈ $3.20 per month. |
+| **MicroVMs** (micro jobs) | Lambda's per-second price, about $0.126 per vCPU-hour including its memory, plus up to $0.0016 per GiB of memory to read the snapshot at each start. More than EC2 per job; see [MicroVMs](microvms.md#costs). |
 | **NAT gateway** (optional) | About $32 per month plus $0.045 per GB, only with `--nat` for a static egress IP. |
 
 Cache traffic goes through the VPC's free S3 gateway endpoint, so the cache adds no

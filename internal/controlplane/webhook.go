@@ -197,7 +197,7 @@ func (cp *ControlPlane) onCompleted(ctx context.Context, gh *github.Client, ev *
 				}
 				set["machineDoneAt"] = completed.Unix()
 				if job.LaunchedAt > 0 {
-					cost := jobCost(job.Price, job.DiskGiB, completed.Sub(time.Unix(job.LaunchedAt, 0)))
+					cost := job.machineCost(completed)
 					set["cost"] = cost
 					cp.addSpend(ctx, cost)
 				}
@@ -223,7 +223,7 @@ func (cp *ControlPlane) onCompleted(ctx context.Context, gh *github.Client, ev *
 		set["ranOnType"] = launch.InstanceType
 		set["ranOnLifecycle"] = launch.Lifecycle
 		if launch.LaunchedAt > 0 {
-			cost := jobCost(launch.Price, launch.DiskGiB, completed.Sub(time.Unix(launch.LaunchedAt, 0)))
+			cost := launch.machineCost(completed)
 			set["cost"] = cost
 			cp.addSpend(ctx, cost)
 			cp.emit("JobCostUSD", cost, UnitNone)
@@ -238,6 +238,12 @@ func (cp *ControlPlane) onCompleted(ctx context.Context, gh *github.Client, ev *
 			ignoreCond(cp.Store.UpdateJob(ctx, lid, map[string]any{"machineDoneAt": completed.Unix()}, nil))
 		} else {
 			set["machineDoneAt"] = completed.Unix()
+		}
+		if isMicroVM(launch.InstanceID) {
+			// EC2 machines power themselves off; MicroVMs are ended from here.
+			if err := cp.TerminateInstances(ctx, launch.InstanceID); err != nil {
+				cp.Log.Warn("terminate MicroVM failed", "microvm", launch.InstanceID, "err", err)
+			}
 		}
 		if launch.Interrupted && wj.Conclusion == "failure" {
 			cp.scheduleRerun(ctx, ev)

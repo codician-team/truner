@@ -329,16 +329,26 @@ func (cp *ControlPlane) createFleet(ctx context.Context, lt *string, overrides [
 	return nil, &CapacityError{Msg: string(kind) + ": " + msg}
 }
 
-// TerminateInstances terminates instances, ignoring already-gone ones.
+// TerminateInstances terminates instances and MicroVMs, ignoring
+// already-gone ones.
 func (cp *ControlPlane) TerminateInstances(ctx context.Context, ids ...string) error {
-	if len(ids) == 0 {
-		return nil
+	var ec2IDs, micro []string
+	for _, id := range ids {
+		if isMicroVM(id) {
+			micro = append(micro, id)
+		} else {
+			ec2IDs = append(ec2IDs, id)
+		}
 	}
-	_, err := cp.EC2.TerminateInstances(ctx, &ec2.TerminateInstancesInput{InstanceIds: ids})
-	if err != nil && strings.Contains(err.Error(), "InvalidInstanceID.NotFound") {
-		return nil
+	err := cp.terminateMicrovms(ctx, micro...)
+	if len(ec2IDs) == 0 {
+		return err
 	}
-	return err
+	_, eerr := cp.EC2.TerminateInstances(ctx, &ec2.TerminateInstancesInput{InstanceIds: ec2IDs})
+	if eerr != nil && strings.Contains(eerr.Error(), "InvalidInstanceID.NotFound") {
+		eerr = nil
+	}
+	return errors.Join(err, eerr)
 }
 
 // ManagedInstances lists this stack's instances in the given states.

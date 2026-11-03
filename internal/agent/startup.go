@@ -92,6 +92,13 @@ func (a *Agent) warmRunner(dir string) {
 	}()
 }
 
+func tail(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return "..." + s[len(s)-n:]
+}
+
 // newestNode returns the newest regular Node.js the runner bundles, such as
 // externals/node24 next to node20, node20_alpine and node24_alpine.
 func newestNode(externals string) string {

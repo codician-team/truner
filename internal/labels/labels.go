@@ -61,6 +61,8 @@ var aliases = map[string]string{
 	"gpu":             "gpu",
 	"gpus":            "gpu",
 	"nvme":            "nvme",
+	"micro":           "micro",
+	"microvm":         "micro",
 	"private":         "private",
 	"static-ip":       "private",
 	"ssh":             "ssh",
@@ -157,7 +159,7 @@ func Parse(prefix string, raw []string) (Labels, bool) {
 
 func isBoolKey(k string) bool {
 	switch k {
-	case "spot", "nvme", "private", "ssh", "cache":
+	case "spot", "nvme", "private", "ssh", "cache", "micro":
 		return true
 	}
 	return false

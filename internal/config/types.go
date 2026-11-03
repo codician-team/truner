@@ -176,6 +176,7 @@ type RunnerSpec struct {
 	Arch   string     `yaml:"arch,omitempty" json:"arch,omitempty"`
 	GPU    int        `yaml:"gpu,omitempty" json:"gpu,omitempty"`
 	NVMe   *bool      `yaml:"nvme,omitempty" json:"nvme,omitempty"`
+	Micro  *bool      `yaml:"micro,omitempty" json:"micro,omitempty"` // run on a Lambda MicroVM
 
 	Image string   `yaml:"image,omitempty" json:"image,omitempty"`
 	Spot  SpotMode `yaml:"spot,omitempty" json:"spot,omitempty"`
