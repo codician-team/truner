@@ -7,26 +7,60 @@ truner doctor
 ```
 
 It checks credentials, the stack, the control plane, EC2 quotas, the GitHub App
-(permissions, events, installations), recent webhook deliveries and recent launch
-failures, and prints the fix for each problem.
+(permissions, events, installations), recent webhook deliveries, recent launch
+failures and queued jobs that no machine is coming for, and prints the fix for each
+problem.
 
 ## A job stays queued
 
-1. **Labels:** the first label must be `truner` (or your `--label-prefix`). Check what
-   a label resolves to with `truner explain <label>`.
-2. **App installation:** the GitHub App must be installed on the repository
+GitHub's job page only says that the job is waiting for a runner. `truner doctor` lists
+the queued jobs that no machine is coming for under **Jobs**: the first two causes
+below.
+
+1. **Label prefix.** The first label must be the installation's prefix: `truner`, or the
+   `--label-prefix` it was installed with. `truner status` prints it, for example
+   `truner-acme/cpu=4/…`. A job written for another prefix, such as `truner/cpu=8/…` in
+   an organization whose installation is `truner-acme`, gets no machine, and `truner
+   jobs` does not list it. The control plane logs `job labels use another label prefix`,
+   `truner doctor` names the job and the label to use, and `truner explain <label>` warns
+   when a label's prefix is not the installation's.
+2. **The other jobs of the run started, this one did not.** Jobs with equal labels can
+   take each other's machines. If GitHub delivers a job's `queued` event late, after that
+   job has started on a machine launched for another job, truner launches nothing for
+   it, and one job with those labels is left without a machine. The control plane logs
+   `job started on another job's machine before one was launched for it`, and `truner
+   doctor` reports the waiting job five minutes after its machine was launched.
+   Cancel the run and re-run it, and give every job its own run token
+   (`run=${{ github.run_id }}-<job>`, see [labels](labels.md#one-run-token-per-job)).
+3. **App installation:** the GitHub App must be installed on the repository
    (`truner github install`).
-3. **Webhooks:** `truner github status` lists recent deliveries. A `401` means the
+4. **Webhooks:** `truner github status` lists recent deliveries. A `401` means the
    webhook secret does not match: run `truner install --new-github-app`.
-4. **Launch errors:** `truner jobs` shows the job's status and `truner logs --control-plane`
+5. **Launch errors:** `truner jobs` shows the job's status and `truner logs --control-plane`
    the worker's attempts. Common causes:
    - `VcpuLimitExceeded` / `MaxSpotInstanceCountExceeded`: raise quotas with
      `truner quota --request 512` (`--gpu` for GPU instances).
    - `no capacity`: rare instance types or a single family. Widen `family`/`type`.
    - `instance limit reached` or `monthly budget … exhausted`: see `limits` in
      `truner config show`.
-5. **Machine started but no job:** read the machine's log with `truner logs <job-id>`.
+6. **Machine started but no job:** read the machine's log with `truner logs <job-id>`.
    It contains the bootstrap, the agent's steps and the runner's output.
+
+## The CLI does not know a label or an image
+
+A CLI older than the installation does not know what came after it. A v0.1.1 CLI on a
+v0.1.3 installation, for example, does not know the `micro` label in `truner explain`
+and does not list MicroVM images in `truner images list`. Compare `truner version` with
+the version `truner status` prints, and install the latest CLI:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/codician-team/truner/main/install.sh | sh
+```
+
+Current CLIs say so on every command when they are older than the installation. Do not
+run `truner upgrade` with the older CLI: it deploys its own version, which takes away
+what came since. `upgrade` and `install` refuse that unless you pass
+`--allow-downgrade`.
 
 ## A job fails right at the start with a truner error
 
@@ -52,6 +86,12 @@ or a `.github/truner.yml` syntax error.
   EBS cost.
 - Machines with hard disk instance storage (`d3en` and others) are not chosen unless
   you name their family. They used to take minutes to set up their disks.
+- **The first micro job of each size after an upgrade** builds its MicroVM image (3–4
+  minutes) and runs on an EC2 Graviton machine meanwhile. See [MicroVMs](microvms.md).
+- **`actions/checkout` is often the slowest step.** Every machine is new, so it fetches
+  the repository from GitHub each time, and on EC2 that took anywhere from 10 to 100
+  seconds for the same 237 MB repository. See
+  [Splitting CI into parallel jobs](parallel-jobs.md#what-a-job-costs-before-its-first-step).
 
 ## Cache misses
 

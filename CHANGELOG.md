@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+- **Jobs with another installation's label prefix are reported.** A job labelled
+  `truner/…` on an installation whose prefix is `truner-acme` waited for hours with no
+  machine, while `truner doctor` said everything was fine and the control plane logged
+  nothing. The webhook now logs such jobs and keeps them for two days. `truner doctor`
+  lists the ones GitHub still has queued, with the label to use, `truner status` prints
+  the installation's prefix, and `truner explain` warns about a label with another
+  prefix. CLI hints such as the one in `truner jobs` use the installation's prefix
+  instead of `truner/`.
+- **One run token per job.** Jobs with equal labels can take each other's machines.
+  When GitHub delivers a job's `queued` event after the job has already started on a
+  machine launched for another job, no machine is launched for it and one job is left
+  waiting. The control plane now logs it, and `truner doctor` reports the waiting job.
+  All examples and docs now use `run=${{ github.run_id }}-<job>` (with the matrix value
+  in matrix jobs), and so do truner's own workflows.
+- **CLI and installation versions.** A CLI older than the installation now warns on
+  every command, because it may not know the installation's labels and images (a v0.1.1
+  CLI does not know `micro`). `truner doctor` and `truner status` no longer tell an older
+  CLI to run `truner upgrade`, and `upgrade` and `install` refuse to deploy an older
+  version over a newer one without `--allow-downgrade`.
+- New guide: [Splitting CI into parallel jobs](docs/parallel-jobs.md), with measured
+  start and checkout times, hidden ordering dependencies, artifacts against rebuilding,
+  and whole-core instance families for timing-sensitive tests.
+
 ## v0.1.3
 
 - **MicroVMs (beta).** The `micro` label (or `micro: true` in a runner profile) runs a job

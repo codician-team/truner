@@ -69,8 +69,14 @@ truner login
 Upgrades an installation to the version of this CLI. Install the new CLI first.
 
 ```bash
-truner upgrade
+truner upgrade [--allow-downgrade]
 ```
+
+A CLI older than the installation refuses, because deploying its version would take
+away what came since. Install the latest CLI instead, or pass `--allow-downgrade` to go
+back on purpose (`install` takes the same flag). Every command that reads the
+installation warns when the CLI is older: an older CLI may not know its labels and
+images, for example `micro` in `explain` and MicroVM images in `images list`.
 
 ### uninstall
 
@@ -89,7 +95,8 @@ Delete the GitHub App in your GitHub settings afterwards.
 ### status
 
 The state of the installation: version, stack outputs (including the static egress IP
-and the dashboard link), running machines, the queue, and today's jobs and spend.
+and the dashboard link), the label prefix jobs must use, running machines, the queue,
+and today's jobs and spend.
 
 ```bash
 truner status
@@ -99,7 +106,10 @@ truner status
 
 Checks the installation end to end and explains each problem: credentials, the stack,
 the control plane, EC2 quotas (standard and GPU), the GitHub App's permissions, events and
-installations, recent webhook deliveries and recent launch failures.
+installations, recent webhook deliveries and recent launch failures. Under **Jobs** it
+prints the label prefix and lists queued jobs that no machine is coming for: jobs whose
+labels carry another installation's prefix, and jobs whose machine ran another job with
+the same labels. GitHub confirms each one is still queued.
 
 ```bash
 truner doctor

@@ -115,19 +115,27 @@ Offer to switch workflows in the user's repositories. Only `runs-on` changes:
 
 | Currently | With truner |
 |---|---|
-| `ubuntu-latest`, `ubuntu-24.04` | `truner/cpu=4/run=${{ github.run_id }}` |
-| `ubuntu-22.04` | `truner/cpu=4/image=ubuntu22/run=${{ github.run_id }}` |
-| `ubuntu-24.04-arm` | `truner/runner=4cpu-linux-arm64/run=${{ github.run_id }}` |
-| larger runners, for example `ubuntu-latest-8-cores` | `truner/cpu=8/run=${{ github.run_id }}` |
-| `windows-latest` | `truner/runner=4cpu-windows-x64/run=${{ github.run_id }}` (beta, boots in 3–5 minutes) |
+| `ubuntu-latest`, `ubuntu-24.04` | `truner/cpu=4/run=${{ github.run_id }}-<job>` |
+| `ubuntu-22.04` | `truner/cpu=4/image=ubuntu22/run=${{ github.run_id }}-<job>` |
+| `ubuntu-24.04-arm` | `truner/runner=4cpu-linux-arm64/run=${{ github.run_id }}-<job>` |
+| larger runners, for example `ubuntu-latest-8-cores` | `truner/cpu=8/run=${{ github.run_id }}-<job>` |
+| `windows-latest` | `truner/runner=4cpu-windows-x64/run=${{ github.run_id }}-<job>` (beta, boots in 3–5 minutes) |
 | `macos-*` | keep it: macOS is not supported |
 
 - The default image has Docker, git, the GitHub CLI, the AWS CLI, Python and build
   tools. `setup-*` actions work as usual. If a job uses tools without installing them
   (Node.js, Java, Go or .NET without a `setup-*` step), use `image=ubuntu24-full`.
-- Keep `run=${{ github.run_id }}` in every label. It stops machines from taking jobs of
-  other workflow runs.
+- Use the installation's label prefix in place of `truner` if it was installed with
+  `--label-prefix` (`truner status` prints it). A job with another prefix stays queued
+  with no machine and no error.
+- Give every job its own run token: replace `<job>` with the job's id, and add the
+  matrix value in a matrix (`run=${{ github.run_id }}-test-${{ matrix.shard }}`). The run
+  id stops machines from taking jobs of other workflow runs. The job's name stops jobs of
+  the same run with equal labels from taking each other's machines, which can leave one
+  job waiting with no machine. `github.job` is empty in `runs-on`, so write the name out.
 - For `runs-on: ${{ matrix.os }}`, change the matrix values instead.
+- Tests with CPU-time or wall-clock bounds: pin whole-core families, for example
+  `family=m7a+m8a+r7a+r8a` ([why](labels.md#machine)).
 - Do not move jobs that run on `pull_request` events from forks of public repositories.
   Self-hosted runners should not run untrusted code.
 - Make the change on a branch, push it, and watch the job start with

@@ -9,12 +9,12 @@ running on EC2.
 ```yaml
 jobs:
   lint:
-    runs-on: truner/micro/run=${{ github.run_id }}          # 2 vCPU MicroVM
+    runs-on: truner/micro/run=${{ github.run_id }}-lint     # 2 vCPU MicroVM
     steps:
       - uses: actions/checkout@v7
       - run: ./scripts/lint.sh
   test:
-    runs-on: truner/cpu=8/run=${{ github.run_id }}          # EC2, as before
+    runs-on: truner/cpu=8/run=${{ github.run_id }}-test     # EC2, as before
 ```
 
 ::: warning Beta
@@ -47,7 +47,7 @@ runners:
 ```
 
 ```yaml
-runs-on: truner/runner=check/run=${{ github.run_id }}
+runs-on: truner/runner=check/run=${{ github.run_id }}-check
 ```
 
 ## What a MicroVM has
@@ -119,8 +119,11 @@ these estimates.
 
 - A region where [Lambda MicroVMs](https://docs.aws.amazon.com/lambda/latest/dg/lambda-microvms-guide.html)
   are available. Elsewhere, micro jobs always run on EC2.
-- The MicroVM roles, which installations get from a truner release with MicroVM support.
-  Run `truner upgrade` with such a CLI on older installations.
+- The MicroVM roles, which installations get from a truner release with MicroVM support
+  (v0.1.3 or newer). Run `truner upgrade` with such a CLI on older installations.
+- A CLI of v0.1.3 or newer. Older ones do not know the `micro` label in `truner explain`
+  and do not list MicroVM images in `truner images list`, even when the installation
+  runs micro jobs.
 - Enough MicroVM quota. Lambda limits the memory of all running MicroVMs per region;
   raise it in Service Quotas under **Lambda MicroVMs**. `limits.maxInstances` counts
   MicroVMs together with EC2 machines.

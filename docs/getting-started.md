@@ -89,7 +89,7 @@ Change `runs-on` in any workflow of a repository the app is installed on:
 ```yaml
 jobs:
   test:
-    runs-on: truner/cpu=4/run=${{ github.run_id }}   # was: ubuntu-latest
+    runs-on: truner/cpu=4/run=${{ github.run_id }}-test   # was: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -103,10 +103,19 @@ Push it, and watch the job get a machine:
 truner jobs --watch
 ```
 
-::: info Why `run=${{ github.run_id }}`?
+::: info Why `run=${{ github.run_id }}-test`?
 GitHub gives a job to *any* online runner whose labels match. truner registers each
-machine with exactly its job's labels, and the unique token keeps it from taking a job
-of another workflow run. It is optional but recommended.
+machine with exactly its job's labels. The run id keeps a machine from taking a job of
+another workflow run, and the job's name after it (`-test`) keeps it from taking another
+job of the same run. Give every job its own token: jobs with equal labels can take each
+other's machines and leave one job without a machine. See
+[one run token per job](labels.md#one-run-token-per-job).
+:::
+
+::: tip Installed with `--label-prefix`?
+Labels start with the installation's prefix instead of `truner`, for example
+`truner-acme/cpu=4/…`. `truner status` prints it. A job with another prefix stays queued
+with no machine.
 :::
 
 The job log starts with a summary of the machine: instance type, spot or on-demand,

@@ -9,8 +9,9 @@ on:
 jobs:
   test:
     # 4 vCPU / 16 GiB, spot with on-demand fallback. The run id keeps machines
-    # from picking up jobs of other workflow runs.
-    runs-on: truner/cpu=4/run=${{ github.run_id }}
+    # from picking up jobs of other workflow runs, and the job's name after it
+    # keeps them from picking up other jobs of this run.
+    runs-on: truner/cpu=4/run=${{ github.run_id }}-test
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -21,7 +22,7 @@ jobs:
       - run: npm test
 
   build-arm:
-    runs-on: truner/runner=8cpu-linux-arm64/run=${{ github.run_id }}
+    runs-on: truner/runner=8cpu-linux-arm64/run=${{ github.run_id }}-build-arm
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -32,13 +33,14 @@ jobs:
     strategy:
       matrix:
         shard: [1, 2, 3, 4]
-    runs-on: truner/cpu=2/run=${{ github.run_id }}
+    # Shards have equal labels: the shard in the token gives each its own machine.
+    runs-on: truner/cpu=2/run=${{ github.run_id }}-matrix-${{ matrix.shard }}
     steps:
       - uses: actions/checkout@v7
       - run: echo "shard ${{ matrix.shard }} on $TRUNER_INSTANCE_TYPE ($TRUNER_INSTANCE_LIFECYCLE)"
 
   docker:
-    runs-on: truner/cpu=8/nvme=true/run=${{ github.run_id }}
+    runs-on: truner/cpu=8/nvme=true/run=${{ github.run_id }}-docker
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v3
@@ -50,12 +52,12 @@ jobs:
 
   gpu:
     if: github.ref == 'refs/heads/main'
-    runs-on: truner/runner=gpu-nvidia/run=${{ github.run_id }}
+    runs-on: truner/runner=gpu-nvidia/run=${{ github.run_id }}-gpu
     steps:
       - run: nvidia-smi
 
   windows:
-    runs-on: truner/runner=4cpu-windows-x64/run=${{ github.run_id }}
+    runs-on: truner/runner=4cpu-windows-x64/run=${{ github.run_id }}-windows
     steps:
       - uses: actions/checkout@v7
       - run: dotnet --info
