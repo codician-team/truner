@@ -11,6 +11,8 @@ These pages are also published as the documentation website (built with
 - [Caching](caching.md)
 - [Images](images.md)
 - [Warm pools](pools.md)
+- [MicroVMs (beta)](microvms.md)
+- [Parallel jobs](parallel-jobs.md)
 - [Networking and access](networking.md)
 - [CLI reference](cli.md)
 - [Costs and limits](costs.md)

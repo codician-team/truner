@@ -41,7 +41,13 @@ the job log says so.
 
 **Speed.** Traffic stays in-region and goes through the VPC's free S3 gateway endpoint.
 Downloads use parallel ranged reads (8 × 16 MiB in flight) and typically reach
-hundreds of MB/s on mid-size instances.
+hundreds of MB/s on mid-size instances: a 234 MB npm cache restores in about a second
+(289–337 MiB/s on 4- and 8-vCPU EC2 machines and 4-vCPU MicroVMs).
+
+**What it does not cover.** `actions/checkout` fetches the repository from GitHub on
+every machine, past the cache. For a 237 MB repository that took 11–102 seconds on EC2
+and about 17 on MicroVMs. See
+[Splitting CI into parallel jobs](parallel-jobs.md#what-a-job-costs-before-its-first-step).
 
 Opt out per job with `cache=github` (GitHub's service) or `cache=off`.
 

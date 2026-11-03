@@ -10,7 +10,7 @@ One command to install. One label to use. Zero cost while idle.
 ```yaml
 jobs:
   build:
-    runs-on: truner/cpu=4/run=${{ github.run_id }}   # was: ubuntu-latest
+    runs-on: truner/cpu=4/run=${{ github.run_id }}-build   # was: ubuntu-latest
 ```
 
 Every job gets a **fresh EC2 machine** that boots in seconds, runs exactly that
@@ -145,7 +145,7 @@ The installer walks you through everything:
 ```yaml
 jobs:
   test:
-    runs-on: truner/cpu=4/run=${{ github.run_id }}
+    runs-on: truner/cpu=4/run=${{ github.run_id }}-test
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -153,9 +153,11 @@ jobs:
       - run: npm ci && npm test
 ```
 
-> **Why `run=${{ github.run_id }}`?** GitHub routes a job to *any* runner whose labels
-> match. A unique token keeps machines from picking up jobs of other workflow runs.
-> It is optional but recommended.
+> **Why `run=${{ github.run_id }}-test`?** GitHub routes a job to *any* runner whose
+> labels match. The run id keeps machines from picking up jobs of other workflow runs,
+> and the job's name after it keeps jobs of the same run from taking each other's
+> machines. Give every job its own ([why](docs/labels.md#one-run-token-per-job)).
+> Installed with `--label-prefix`? Use that prefix instead of `truner`.
 
 Check that everything works:
 
@@ -169,8 +171,8 @@ truner jobs --watch
 Labels are `key=value` pairs after the `truner` label, written either as a path or as a list:
 
 ```yaml
-runs-on: truner/cpu=8/ram=32/run=${{ github.run_id }}
-runs-on: [truner, cpu=8, ram=32, "run=${{ github.run_id }}"]
+runs-on: truner/cpu=8/ram=32/run=${{ github.run_id }}-test
+runs-on: [truner, cpu=8, ram=32, "run=${{ github.run_id }}-test"]
 ```
 
 | Label | Example | Meaning |
@@ -193,7 +195,7 @@ runs-on: [truner, cpu=8, ram=32, "run=${{ github.run_id }}"]
 | `timeout` | `timeout=3h` | hard limit for the machine's lifetime |
 | `pool` | `pool=fast` | take a pre-warmed machine from a pool |
 | `cache` | `cache=github` | use GitHub's cache instead of S3 (`off` to disable) |
-| `run` | `run=${{ github.run_id }}` | uniqueness token (ignored) |
+| `run` | `run=${{ github.run_id }}-test` | uniqueness token (ignored), one per job |
 
 Built-in profiles: `{2,4,8,16,32,48,64,96}cpu-linux-{x64,arm64}`,
 `{2,4,8,16,32,64}cpu-windows-x64`, `gpu-nvidia`, `gpu-nvidia-large`.

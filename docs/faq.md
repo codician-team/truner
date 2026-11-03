@@ -80,9 +80,23 @@ a role scoped to the repository and branch.
 
 ### Why does a job wait in the queue?
 
-Run `truner doctor`. The usual causes are an exhausted EC2 vCPU quota
-(`truner quota --request 512`), a repository the GitHub App is not installed on, or a
-reached budget or instance limit. See [troubleshooting](troubleshooting.md).
+Run `truner doctor`. The usual causes are a label with another installation's prefix
+(`truner/…` where the installation answers to `truner-acme/…`), an exhausted EC2 vCPU
+quota (`truner quota --request 512`), a repository the GitHub App is not installed on,
+or a reached budget or instance limit. See [troubleshooting](troubleshooting.md).
+
+### Why does one job of a run wait while the others run?
+
+Most likely its machine ran another job with the same labels. Give every job its own run
+token, `run=${{ github.run_id }}-<job>`, with the matrix value in matrix jobs. See
+[one run token per job](labels.md#one-run-token-per-job).
+
+### Should I split one long CI job into several?
+
+Usually yes, if the checks are independent: they then run at the same time. Each job
+pays for its own start (seconds on a MicroVM, about a minute on EC2) and its own
+checkout. [Splitting CI into parallel jobs](parallel-jobs.md) has the numbers and the
+pitfalls.
 
 ## Security
 

@@ -16,7 +16,7 @@ pools:
 ```
 
 ```yaml
-runs-on: truner/pool=fast/run=${{ github.run_id }}
+runs-on: truner/pool=fast/run=${{ github.run_id }}-test
 ```
 
 - The janitor (every 2 minutes) launches machines until `size` are ready. Each one

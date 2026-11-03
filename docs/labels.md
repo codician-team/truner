@@ -4,17 +4,58 @@ A job runs on truner when one of its `runs-on` labels is `truner` (or starts wit
 `truner/` or `truner=`). Settings are `key=value` pairs, written as a path or a list:
 
 ```yaml
-runs-on: truner/cpu=8/ram=32/run=${{ github.run_id }}
-runs-on: truner=${{ github.run_id }}/cpu=8/ram=32       # first value is the run token
-runs-on: [truner, cpu=8, ram=32, "run=${{ github.run_id }}"]
+runs-on: truner/cpu=8/ram=32/run=${{ github.run_id }}-test
+runs-on: truner=${{ github.run_id }}-test/cpu=8/ram=32       # first value is the run token
+runs-on: [truner, cpu=8, ram=32, "run=${{ github.run_id }}-test"]
 ```
-
-GitHub assigns a job to any online runner whose labels contain all of the job's
-labels. truner registers each machine with exactly the job's labels, so add a
-unique `run=` token to stop machines from picking up jobs of other workflow runs.
 
 Unknown keys are ignored with a warning in the job log. Invalid values fail the job
 with an explanation.
+
+::: warning Use your installation's prefix
+`truner` is the default prefix. An installation made with `--label-prefix` (or one of
+several in an organization) answers only to its own prefix, for example
+`truner-acme/cpu=8/…`. A job with another prefix waits in GitHub's queue with no machine
+and no error. `truner status` prints the prefix, `truner doctor` lists jobs that wait
+because of it, and `truner explain` warns when a label's prefix is not the
+installation's.
+:::
+
+## One run token per job
+
+GitHub gives a job to any online runner whose labels include all of the job's labels.
+truner registers each machine with exactly the labels of the job it was started for, so
+two jobs with the same labels can take each other's machines. The `run=` token makes
+labels unique. Give every job its own:
+
+```yaml
+jobs:
+  typecheck:
+    runs-on: truner/micro/cpu=4/run=${{ github.run_id }}-typecheck
+  build:
+    runs-on: truner/micro/cpu=4/run=${{ github.run_id }}-build
+  test:
+    strategy:
+      matrix:
+        shard: [1, 2, 3]
+    runs-on: truner/cpu=8/run=${{ github.run_id }}-test-${{ matrix.shard }}
+```
+
+- `${{ github.run_id }}` keeps machines from taking jobs of other workflow runs.
+- The job's name after it keeps machines from taking other jobs of the same run. Write
+  the name out: `github.job` is empty in `runs-on`. In a matrix, add the matrix value
+  or `${{ strategy.job-index }}`.
+
+With one token per run (`run=${{ github.run_id }}` alone), jobs with otherwise equal
+labels, such as matrix shards or several `micro/cpu=4` checks, swap machines. That is
+harmless while every job gets a machine. But GitHub sometimes delivers a job's `queued`
+event late, after the job has already started on a machine launched for another job.
+truner then launches nothing for the late job, and the job whose machine was taken waits
+with no machine until it is cancelled or GitHub gives up a day later. In one run of three
+`micro/cpu=4` jobs, astro check's `queued` event arrived 38 seconds after astro check had
+started on typecheck's MicroVM. Typecheck had taken build's, and build waited until the
+run was cancelled ([#3](https://github.com/codician-team/truner/issues/3)).
+`truner doctor` reports such jobs.
 
 ## Machine
 
@@ -39,6 +80,17 @@ hard disks (`d2`, `d3`, `d3en`, `h1`) are left out too: they are cheap on spot, 
 their disks take minutes to set up and build slower than EBS. Name the family to use
 one anyway.
 
+**Timing-sensitive tests.** The cheapest spot pool changes from run to run, and a vCPU
+is not the same everywhere. On AMD's 7th and 8th generation (`c7a`, `m7a`, `r7a`, `c8a`,
+`m8a`, `r8a`) and on Graviton, each vCPU is a whole core. On Intel types and older or
+special families (`m6a`, `z1d`, `i4i`, `m7i`, …) a vCPU is one of two hyper-threads, so
+an 8-vCPU machine has 4 cores. Tests with CPU-time or wall-clock bounds can pass on one
+and fail on the next: a test bounded at 8× a reference workload read 8.9× on a
+`z1d.2xlarge` (4 cores under 7 test workers) and about 3× on `r7a`/`m7a`. Pin families
+for such suites, for example `family=m7a+m8a+r7a+r8a`, and name several so EC2 Fleet
+still has spot pools to choose from. See
+[Splitting CI into parallel jobs](parallel-jobs.md).
+
 ## Image and disk
 
 | Key | Values | Default | Notes |
@@ -60,7 +112,7 @@ one anyway.
 | `timeout` | `90`, `3h` | `720` (12 h) | Hard limit on the machine's lifetime |
 | `idle-timeout` | minutes | `15` | Shut down if no job is picked up in this time |
 | `pool` | pool name | – | Start a pre-warmed machine. Hardware labels are ignored, since the pool defines them |
-| `run` | anything | – | Uniqueness token, ignored |
+| `run` | anything | – | Uniqueness token, ignored. One per job: `run=${{ github.run_id }}-<job>` ([why](#one-run-token-per-job)) |
 
 ## Built-in runner profiles
 
