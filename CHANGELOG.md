@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **Node 26 starts on MicroVMs.** Node's official Arm64 build links `libatomic.so.1`,
+  which the MicroVM image did not have, so `node` exited with status 127 (finding 8 of
+  the [MicroVMs field report](docs/field-report-microvms.md)). The image now installs
+  `libatomic1`; it is rebuilt with the upgrade. Remove the `apt-get install libatomic1`
+  workaround step afterwards, which cost each job about 10 s. EC2 machines already have
+  it through `build-essential`.
 - **`truner jobs` cuts long names between characters.** It cut the WORKFLOW / JOB
   column after 39 bytes, which split letters such as `ş` and `ğ` and printed invalid
   UTF-8. It now counts characters.

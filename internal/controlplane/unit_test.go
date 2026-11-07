@@ -91,6 +91,13 @@ func TestRerunRefused(t *testing.T) {
 	}
 }
 
+func TestMicroDockerfileHasNodeLibraries(t *testing.T) {
+	// Node 26's Arm64 build exits with status 127 without libatomic.so.1.
+	if !strings.Contains(microDockerfile, " libatomic1 ") {
+		t.Fatal("the MicroVM image must install libatomic1")
+	}
+}
+
 func TestLaunchJobID(t *testing.T) {
 	if launchJobID("truner-12345-abcdef") != 12345 || launchJobID("my-runner") != 0 || launchJobID("truner-x") != 0 {
 		t.Fatal("launchJobID")
