@@ -144,8 +144,11 @@ truner status
 Checks the installation end to end and explains each problem: credentials, the stack,
 whether a newer release is out, whether the installation is locked against older CLIs,
 the control plane, EC2 quotas (standard and GPU), existing subnets without public IPs,
-the dead-letter queue, the account config, launch failures of the last 24 hours, the
-GitHub App's permissions, events and installations, and recent webhook deliveries.
+the dead-letter queue, the account config, launch failures and failed janitor tasks of
+the last 24 hours, the GitHub App's permissions, events and installations, and recent
+webhook deliveries. A janitor task that failed in the last hour counts as a problem, an
+older failure as a warning. Reading the janitor's log needs `logs:FilterLogEvents`, as
+`truner logs --control-plane` does.
 Under **Jobs** it prints the label prefix and lists queued jobs that no machine is coming
 for: jobs whose labels carry another installation's prefix, and jobs whose machine ran
 another job with the same labels and that got no machine again. GitHub confirms each one

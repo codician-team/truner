@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **`truner doctor` reports failed janitor tasks.** It said "Everything looks good" while
+  the janitor failed 80 times in five days. It now reads the janitor's log and lists each
+  task that failed in the last 24 hours, with the count and the last error. A failure in
+  the last hour counts as a problem.
 - **Far fewer `ListMicrovms` calls.** Two installations in one account logged 162 `could
   not count MicroVMs` warnings and 80 failed janitor runs with `ThrottlingException` in
   five days. The API lists the whole account's MicroVMs, terminated ones too, 10 per

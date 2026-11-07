@@ -237,6 +237,7 @@ func (a *app) doctor(ctx context.Context) error {
 	if failed == 0 {
 		u.ok("no launch failures in the last 24h (%d jobs)", len(jobs)+len(yesterday))
 	}
+	checkJanitor(ctx, u, e, &problems)
 
 	u.println(u.bold("\nGitHub"))
 	gh, err := e.github(ctx)
