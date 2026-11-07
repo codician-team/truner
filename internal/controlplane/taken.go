@@ -74,12 +74,10 @@ func (cp *ControlPlane) checkTaken(ctx context.Context, jobID int64) error {
 	if err != nil {
 		return err
 	}
-	microvms, err := cp.LiveMicrovms(ctx)
-	if err != nil {
-		cp.Log.Warn("could not list MicroVMs", "err", err)
-		microvms = nil
-	}
-	waiting := withoutMachine(jobs, machinesUp(insts, microvms), time.Now())
+	// No MicroVM list: this runs after every swap, and ListMicrovms is rate
+	// limited. A job that waits for a MicroVM that died gets a machine from the
+	// janitor, which lists them.
+	waiting := withoutMachine(jobs, machinesUp(insts, nil), time.Now())
 	if len(waiting) == 0 {
 		return nil
 	}

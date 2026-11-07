@@ -495,11 +495,13 @@ func (cp *ControlPlane) LiveMicrovms(ctx context.Context) (map[string]mvmtypes.M
 	if !cp.MicroEnabled() {
 		return out, nil
 	}
-	if items, err := cp.Store.ItemsInColl(ctx, collMicro); err != nil || len(items) == 0 {
-		return out, err
+	if items, err := cp.Store.ItemsInColl(ctx, collMicro); err != nil {
+		return nil, err
+	} else if len(items) == 0 {
+		return out, nil
 	}
 	mine := ":microvm-image:" + cp.Env.Stack + "-micro-"
-	p := mvm.NewListMicrovmsPaginator(cp.Micro, &mvm.ListMicrovmsInput{})
+	p := mvm.NewListMicrovmsPaginator(cp.Micro, &mvm.ListMicrovmsInput{}, func(o *mvm.ListMicrovmsPaginatorOptions) { o.Limit = microListPage })
 	for p.HasMorePages() {
 		page, err := p.NextPage(ctx)
 		if err != nil {

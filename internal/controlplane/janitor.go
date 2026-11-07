@@ -42,7 +42,7 @@ func (cp *ControlPlane) RunJanitor(ctx context.Context) error {
 	var microvms map[string]mvmtypes.MicrovmItem
 	run("microvms", 30*time.Second, func(ctx context.Context) error {
 		var err error
-		microvms, err = cp.LiveMicrovms(ctx)
+		microvms, err = cp.janitorMicrovms(ctx)
 		return err
 	})
 	run("jobs", 90*time.Second, func(ctx context.Context) error { return cp.reconcileJobs(ctx, instances, microvms) })

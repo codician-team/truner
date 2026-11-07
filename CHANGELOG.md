@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **Far fewer `ListMicrovms` calls.** Two installations in one account logged 162 `could
+  not count MicroVMs` warnings and 80 failed janitor runs with `ThrottlingException` in
+  five days. The API lists the whole account's MicroVMs, terminated ones too, 10 per
+  page, so one listing took 11 calls. Launches now count MicroVMs from truner's job
+  records and never list them, the check after a job takes another job's machine does
+  not list either, and the janitor lists 50 per page, only while a MicroVM is up and
+  every 15 minutes otherwise. After throttling it waits 4, 8 and then 16 minutes,
+  across all of the installation's Lambda functions. A failed list no longer leaves
+  MicroVMs out of `limits.maxInstances`.
 - **`~/.docker` belongs to the runner user.** The agent's ECR login created the folder as
   root, so `docker/setup-buildx-action` failed with `EACCES: permission denied, mkdir
   '/home/runner/.docker/buildx/.bin/...'`. Remove any `DOCKER_CONFIG` workaround from

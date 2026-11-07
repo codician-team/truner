@@ -65,6 +65,9 @@ type fakeAWS struct {
 	microBuilds   []map[string]any // CreateMicrovmImage and UpdateMicrovmImage requests
 	microRuns     []map[string]any // RunMicrovm requests
 	microFail     string           // error type RunMicrovm returns
+	microLists    int              // ListMicrovms calls
+	microListSize string           // maxResults of the last ListMicrovms call
+	microListFail string           // error type ListMicrovms returns
 	microDeleted  []string         // deleted image versions
 	microLaunched int
 }
@@ -229,6 +232,12 @@ func (f *fakeAWS) microAPI(w http.ResponseWriter, r *http.Request, body []byte) 
 		reply(200, map[string]any{"microvmId": m.id, "endpoint": m.id + ".lambda-microvm.us-east-1.on.aws", "imageArn": m.image,
 			"imageVersion": in["imageVersion"], "maximumDurationInSeconds": in["maximumDurationInSeconds"], "startedAt": m.started.Unix(), "state": m.state})
 	case parts[0] == "microvms" && len(parts) == 1 && r.Method == http.MethodGet:
+		f.microLists++
+		f.microListSize = r.URL.Query().Get("maxResults")
+		if f.microListFail != "" {
+			fail(400, f.microListFail)
+			return
+		}
 		var items []map[string]any
 		for _, m := range f.microvms {
 			items = append(items, map[string]any{"microvmId": m.id, "imageArn": m.image, "imageVersion": "1", "startedAt": m.started.Unix(), "state": m.state})
