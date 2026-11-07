@@ -15,6 +15,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/codician-team/truner/internal/agentcfg"
 )
 
 //go:embed profiles/standard.sh
@@ -212,7 +214,7 @@ func (a *Agent) osInstallProfile(ctx context.Context, profile string) error {
 			return err
 		}
 		cmd := exec.CommandContext(ctx, "/bin/bash", path)
-		cmd.Env = append(os.Environ(), "TRUNER_USER="+a.user(), "DEBIAN_FRONTEND=noninteractive", "HOME=/root")
+		cmd.Env = a.profileEnv()
 		w := &logWriter{log: a.Log, prefix: "profile: "}
 		cmd.Stdout, cmd.Stderr = w, w
 		start := time.Now()
@@ -224,6 +226,51 @@ func (a *Agent) osInstallProfile(ctx context.Context, profile string) error {
 		}
 	}
 	return nil
+}
+
+// profileEnv is the environment of the profile scripts. A builder or a pool
+// machine also fetches what jobs may need later; a machine that runs a job
+// right away would only wait for it.
+func (a *Agent) profileEnv() []string {
+	env := append(os.Environ(), "TRUNER_USER="+a.user(), "DEBIAN_FRONTEND=noninteractive", "HOME=/root")
+	if a.Cfg.Mode == agentcfg.ModeBake || a.Cfg.Mode == agentcfg.ModePool {
+		env = append(env, "TRUNER_PRELOAD=1")
+	}
+	return env
+}
+
+// osWarmDocker gets Docker ready for the job's first docker command, in the
+// background. On a baked image's lazily restored volume, the first `docker
+// version` and `docker info` of setup-buildx-action took about 18 s: they read
+// the daemon, the CLI and every CLI plugin block by block.
+func (a *Agent) osWarmDocker(ctx context.Context) {
+	docker, err := exec.LookPath("docker")
+	if err != nil {
+		return
+	}
+	start := time.Now()
+	exec.CommandContext(ctx, "systemctl", "start", "--no-block", "docker.service").Run()
+	paths := []string{docker}
+	for _, name := range []string{"dockerd", "containerd", "containerd-shim-runc-v2", "runc"} {
+		if p, err := exec.LookPath(name); err == nil {
+			paths = append(paths, p)
+		}
+	}
+	for _, d := range []string{"/usr/libexec/docker/cli-plugins", "/usr/lib/docker/cli-plugins", "/usr/local/lib/docker/cli-plugins"} {
+		if _, err := os.Stat(d); err == nil {
+			paths = append(paths, d)
+		}
+	}
+	for i, p := range paths {
+		if r, err := filepath.EvalSymlinks(p); err == nil {
+			paths[i] = r
+		}
+	}
+	_, mib, _ := prefetch(paths, 8)
+	for _, args := range [][]string{{"version"}, {"info"}, {"buildx", "version"}} {
+		exec.CommandContext(ctx, docker, args...).Run()
+	}
+	a.Log.Info("docker ready", "prefetchedMiB", mib>>20, "took", time.Since(start).Round(time.Millisecond))
 }
 
 // osConfigureDocker moves Docker and containerd data onto local NVMe.

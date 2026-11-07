@@ -109,6 +109,9 @@ func (a *Agent) prepareMachine(ctx context.Context) error {
 	if err := a.timed("docker", func() error { return a.osConfigureDocker(ctx) }); err != nil {
 		a.warn("docker setup: " + err.Error())
 	}
+	if a.Cfg.Mode == agentcfg.ModeRun {
+		go a.osWarmDocker(ctx)
+	}
 	return nil
 }
 

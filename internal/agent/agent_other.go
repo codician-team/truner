@@ -37,6 +37,7 @@ func (a *Agent) osEnsureUser(ctx context.Context) error               { return e
 func (a *Agent) osSetupStorage(ctx context.Context) (string, error)   { return "", nil }
 func (a *Agent) osInstallProfile(ctx context.Context, p string) error { return errUnsupported }
 func (a *Agent) osConfigureDocker(ctx context.Context) error          { return nil }
+func (a *Agent) osWarmDocker(ctx context.Context)                     {}
 func (a *Agent) osRunnerDir() string                                  { return filepath.Join(os.TempDir(), "truner", "actions-runner") }
 func (a *Agent) osRunnerCommand(dir string, env []string) *exec.Cmd {
 	return exec.Command(filepath.Join(dir, "run.sh"), "--jitconfig", a.Cfg.JITConfig)

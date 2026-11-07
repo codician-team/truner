@@ -9,6 +9,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"testing"
 
@@ -116,5 +117,52 @@ func TestDockerConfigBelongsToRunnerUser(t *testing.T) {
 		if got := int(fi.Sys().(*syscall.Stat_t).Uid); got != uid {
 			t.Errorf("%s belongs to uid %d, want the runner user's %d", p, got, uid)
 		}
+	}
+}
+
+// Only builders and pool machines pull images for later jobs.
+func TestProfilePreloadsOnlyAheadOfJobs(t *testing.T) {
+	has := func(mode string) bool {
+		a := &Agent{Cfg: &agentcfg.Config{Mode: mode}}
+		for _, kv := range a.profileEnv() {
+			if kv == "TRUNER_PRELOAD=1" {
+				return true
+			}
+		}
+		return false
+	}
+	if !has(agentcfg.ModeBake) || !has(agentcfg.ModePool) || has(agentcfg.ModeRun) {
+		t.Fatal("TRUNER_PRELOAD must be set when baking and preparing pools only")
+	}
+	if !strings.Contains(standardProfile, "TRUNER_PRELOAD") || !strings.Contains(standardProfile, "moby/buildkit:buildx-stable-1") {
+		t.Fatal("the standard profile must pull the BuildKit image when preloading")
+	}
+}
+
+func TestWarmDocker(t *testing.T) {
+	bin := t.TempDir()
+	calls := filepath.Join(bin, "calls")
+	for _, name := range []string{"docker", "systemctl"} {
+		script := "#!/bin/sh\necho " + name + " \"$@\" >>" + calls + "\n"
+		if err := os.WriteFile(filepath.Join(bin, name), []byte(script), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", bin)
+	a := &Agent{Cfg: &agentcfg.Config{}}
+	a.Log = slog.New(slog.NewTextHandler(io.Discard, nil))
+	a.osWarmDocker(context.Background())
+	got, _ := os.ReadFile(calls)
+	want := "systemctl start --no-block docker.service\ndocker version\ndocker info\ndocker buildx version\n"
+	if string(got) != want {
+		t.Fatalf("got calls:\n%s\nwant:\n%s", got, want)
+	}
+
+	// Without Docker, nothing happens.
+	os.Remove(filepath.Join(bin, "docker"))
+	os.Remove(calls)
+	a.osWarmDocker(context.Background())
+	if _, err := os.Stat(calls); err == nil {
+		t.Fatal("a machine without Docker must not start it")
 	}
 }

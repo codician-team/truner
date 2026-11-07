@@ -96,6 +96,8 @@ func (a *Agent) osInstallProfile(ctx context.Context, profile string) error {
 
 func (a *Agent) osConfigureDocker(ctx context.Context) error { return nil }
 
+func (a *Agent) osWarmDocker(ctx context.Context) {}
+
 func (a *Agent) osRunnerDir() string { return `C:\actions-runner` }
 
 func (a *Agent) osRunnerDeps(ctx context.Context, dir string) {}

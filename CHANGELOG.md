@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **Docker jobs start faster.** In one repository's builds, `docker/setup-buildx-action`
+  took 27 s at the median: about 18 s for the first `docker version` and `docker info`,
+  which read Docker's binaries from a lazily restored volume, and about 9 s to pull
+  `moby/buildkit:buildx-stable-1`. The agent now reads Docker's binaries and runs
+  `docker info` in the background while the runner waits for its job, and baked images
+  and warm pool machines come with the BuildKit image. Baked images get it when they are
+  rebuilt after the upgrade. On machines with local NVMe, the image is copied there with
+  Docker's other data, which adds a moment to the agent's `docker` step.
 - **Old instance generations are left out by default.** With `cpu=N` and no `family`,
   EC2 Fleet often picked the cheapest spot pool from 2018: at the median `CI / frontend`
   took 345 s on `r5a.2xlarge` against 148 s on `c7a.2xlarge`, and `CI / security` 233 s
