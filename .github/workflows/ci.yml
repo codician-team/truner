@@ -9,12 +9,10 @@ on:
 permissions:
   contents: read
 
-# Jobs run on codician's own truner installation. Pull requests from forks run
-# on GitHub-hosted runners: self-hosted machines never run code from outside
-# the organization.
+# Jobs run on GitHub-hosted runners, which are free for a public repository.
 jobs:
   test:
-    runs-on: "${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || format('truner-codician/cpu=8/run={0}-test', github.run_id) }}"
+    runs-on: ubuntu-latest
     services:
       dynamodb:
         image: amazon/dynamodb-local
@@ -58,9 +56,8 @@ jobs:
         run: go run ./tools/build -targets host -out /tmp/dist
 
   profiles:
-    # Run the standard profile on real Ubuntu images. Each matrix job has its own
-    # run token, so neither takes the other's machine.
-    runs-on: "${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || format('truner-codician/cpu=4/run={0}-profiles-{1}', github.run_id, strategy.job-index) }}"
+    # Run the standard profile on real Ubuntu images.
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         image: ["ubuntu:24.04", "ubuntu:22.04"]

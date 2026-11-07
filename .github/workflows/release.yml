@@ -9,8 +9,7 @@ permissions:
 
 jobs:
   release:
-    # Tags are pushed by maintainers only, so this always runs on codician's truner installation.
-    runs-on: "truner-codician/cpu=8/run=${{ github.run_id }}-release"
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
