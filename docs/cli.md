@@ -132,8 +132,9 @@ afterwards: the command prints the link.
 
 The state of the installation: version, the GitHub App and where it is installed, recent
 webhook deliveries, the webhook URL, the label prefix jobs must use, the static egress IP,
-running machines, the launch and dead-letter queues, today's jobs and spend, this month's
-estimate, image builds and the dashboard link.
+running machines, the launch and dead-letter queues, today's jobs and estimated spend, this
+month's spend, as [billed by AWS](costs.md#estimates-first-then-the-bill) where it has been,
+image builds and the dashboard link.
 
 ```bash
 truner status
@@ -144,8 +145,8 @@ truner status
 Checks the installation end to end and explains each problem: credentials, the stack,
 whether a newer release is out, whether the installation is locked against older CLIs,
 the control plane, EC2 quotas (standard and GPU), existing subnets without public IPs,
-the dead-letter queue, the account config, launch failures of the last 24 hours, the
-GitHub App's permissions, events and installations, and recent webhook deliveries.
+whether the bill can show truner's EC2 machines, the dead-letter queue, the account config,
+launch failures of the last 24 hours, the GitHub App's permissions, events and installations, and recent webhook deliveries.
 Under **Jobs** it prints the label prefix and lists queued jobs that no machine is coming
 for: jobs whose labels carry another installation's prefix, and jobs whose machine ran
 another job with the same labels and that got no machine again. GitHub confirms each one
@@ -162,7 +163,9 @@ It exits with code 0 when everything looks good, and otherwise with
 
 ### jobs
 
-Recent jobs with their machine, wait time, duration and cost.
+Recent jobs with their machine, wait time, duration and cost. A cost that starts with `~`
+is an estimate, the others come from the
+[AWS bill](costs.md#estimates-first-then-the-bill).
 
 ```bash
 truner jobs [--watch] [--repo owner/name] [--days 2] [--limit 30]
@@ -177,16 +180,21 @@ truner jobs [--watch] [--repo owner/name] [--days 2] [--limit 30]
 
 ### costs
 
-Estimated spend, and savings compared with GitHub-hosted runners of the same size.
+Spend, as [billed by AWS](costs.md#estimates-first-then-the-bill) where it has been and
+estimated otherwise, and savings compared with GitHub-hosted runners of the same size.
 
 ```bash
-truner costs [--by repo|workflow|type] [--days 30]
+truner costs [--by repo|workflow|type] [--days 30] [--estimates-only] [--refresh]
+truner costs --activate-tags
 ```
 
 | Flag | Default | Meaning |
 |---|---|---|
 | `--by repo\|workflow\|type` | `repo` | group by repository, workflow or instance type |
 | `--days N` | `30` | look back this many days |
+| `--estimates-only` | | show truner's estimates and do not read the AWS bill |
+| `--refresh` | | read the AWS bill now, even if it was read in the last 12 hours ($0.01 per Cost Explorer request) |
+| `--activate-tags` | | activate truner's tags as cost allocation tags in this AWS account, so that the bill shows EC2 machines apart from other EC2 |
 
 ### logs
 

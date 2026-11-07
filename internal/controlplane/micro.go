@@ -40,6 +40,19 @@ const (
 	microReadPerGiB = 0.00155
 )
 
+// What MicroVM jobs cost on the AWS bill, measured over 304 jobs from
+// 2026-11-03 to 2026-11-05. They used 1.39 times the baseline vCPU-seconds and
+// 1.14 times the baseline memory, together 1.33 times the baseline's price, and
+// read about 1.18 GiB of snapshot per start plus 0.26 GiB per baseline vCPU, far
+// from the whole baseline memory. The bill replaces these estimates once it is
+// posted, so they only have to be close for the last day or two.
+const (
+	// MicroBurstFactor is what a job costs per second, relative to the baseline.
+	MicroBurstFactor = 1.33
+	microReadBaseGiB = 1.18
+	microReadPerVCPU = 0.26
+)
+
 // microDockerfile builds the image the snapshot is taken from: Ubuntu 24.04
 // with the tools short jobs commonly use. The agent installs the runner when
 // it starts, before Lambda calls /ready.
@@ -75,7 +88,9 @@ func MicroHourlyPrice(vcpu int) float64 {
 }
 
 // MicroStartPrice estimates the snapshot data a MicroVM reads when it starts.
-func MicroStartPrice(vcpu int) float64 { return float64(2*vcpu) * microReadPerGiB }
+func MicroStartPrice(vcpu int) float64 {
+	return (microReadBaseGiB + microReadPerVCPU*float64(vcpu)) * microReadPerGiB
+}
 
 // connector is a Lambda-managed network connector.
 func (cp *ControlPlane) connector(name string) string {
@@ -567,10 +582,10 @@ func (cp *ControlPlane) reconcileMicrovms(ctx context.Context, live map[string]m
 func (j *Job) machineCost(t time.Time) float64 {
 	d := t.Sub(time.Unix(j.LaunchedAt, 0))
 	if !isMicroVM(j.InstanceID) {
-		return jobCost(j.Price, j.DiskGiB, d)
+		return jobCost(j.Price, j.overheadPerHour(), d)
 	}
-	// Billed per second, plus reading the snapshot at the start.
-	return j.Price*max(d, 0).Hours() + MicroStartPrice(max(j.CPU, 1))
+	// Billed per second, bursting included, plus reading the snapshot at the start.
+	return j.Price*MicroBurstFactor*max(d, 0).Hours() + MicroStartPrice(max(j.CPU, 1))
 }
 
 // RemoveMicroVMs terminates this stack's MicroVMs and deletes its MicroVM

@@ -114,18 +114,23 @@ MicroVMs cost more per second than EC2, and truner uses them to save start time,
 money. Lambda bills a running MicroVM's baseline per second, plus the snapshot data it
 reads when it starts. In us-east-1:
 
-| Size | Per hour at baseline | Snapshot reads per start (up to) |
+| Size | Per hour at baseline | Snapshot reads per start (typical) |
 |---|---|---|
-| 1 vCPU, 2 GiB | $0.126 | $0.003 |
-| 2 vCPU, 4 GiB | $0.252 | $0.006 |
-| 4 vCPU, 8 GiB | $0.504 | $0.012 |
+| 1 vCPU, 2 GiB | $0.126 | $0.002 |
+| 2 vCPU, 4 GiB | $0.252 | $0.003 |
+| 4 vCPU, 8 GiB | $0.504 | $0.003 |
 
-Bursting above the baseline is billed for the extra vCPU and memory while used. For
-comparison, a 2 vCPU Graviton EC2 machine costs about $0.07 per hour on demand and
+Bursting above the baseline is billed for the extra vCPU and memory while used. On the
+AWS bill for 304 jobs of a few repositories, jobs used 1.39 times the baseline vCPU-seconds
+and 1.14 times the baseline memory, together 1.33 times the baseline's price, and read 1.4
+GiB (1 vCPU) to 2.2 GiB (4 vCPU) of snapshot per start. A job that keeps all its peak vCPUs
+busy costs up to four times the baseline.
+
+For comparison, a 2 vCPU Graviton EC2 machine costs about $0.07 per hour on demand and
 usually less on spot, but it bills at least 60 seconds plus the boot. For a one-minute
 check, a MicroVM costs about a cent and an EC2 spot machine a fraction of that. `truner
-explain truner/micro` prints the prices, and `truner costs` includes micro jobs with
-these estimates.
+explain truner/micro` prints the prices. `truner costs` estimates micro jobs with these
+numbers, then [shows what AWS billed](costs.md#estimates-first-then-the-bill).
 
 ## Requirements
 

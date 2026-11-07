@@ -76,6 +76,9 @@ type Job struct {
 	AMI          string  `dynamodbav:"ami,omitempty"`
 	Platform     string  `dynamodbav:"platform,omitempty"`
 	DiskGiB      int     `dynamodbav:"diskGiB,omitempty"`
+	DiskIOPS     int     `dynamodbav:"diskIops,omitempty"`
+	DiskMiBps    int     `dynamodbav:"diskThroughput,omitempty"`
+	PublicIP     bool    `dynamodbav:"publicIp,omitempty"`
 	Price        float64 `dynamodbav:"price,omitempty"` // USD per hour
 	Pool         string  `dynamodbav:"pool,omitempty"`
 	KeepMinutes  int     `dynamodbav:"keepMinutes,omitempty"`

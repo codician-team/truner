@@ -108,9 +108,19 @@ func (a *app) statusCmd() *cobra.Command {
 			if len(waits) > 0 {
 				med = fmt.Sprintf("%.0fs", waits[len(waits)/2])
 			}
-			u.printf("Today        %d job(s), median queue-to-start %s, %s\n", len(jobs), med, money(cost))
-			if it, err := store.GetItem(ctx, "spend#"+time.Now().UTC().Format("2006-01")); err == nil && it != nil {
-				u.printf("This month   %s estimated\n", money(it.Float("total")))
+			u.printf("Today        %d job(s), median queue-to-start %s, %s\n", len(jobs), med, approx(cost))
+			now := time.Now().UTC()
+			if it, err := store.GetItem(ctx, "spend#"+now.Format("2006-01")); err == nil && it != nil {
+				firstOfMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+				// A failure is `truner costs`'s to explain; here the estimate stands.
+				_ = e.refreshBill(ctx, firstOfMonth, now, false)
+				total := it.Float("total")
+				estimated, billed, through := e.loadBill(ctx).month(now.Format("2006-01"))
+				if rest := max(total-estimated, 0); billed > 0 {
+					u.printf("This month   %s (%s billed by AWS through %s, %s estimated)\n", money(billed+rest), money(billed), through, money(rest))
+				} else {
+					u.printf("This month   %s estimated\n", money(total))
+				}
 			}
 			if items, err := store.ItemsInColl(ctx, "bakes"); err == nil && len(items) > 0 {
 				var parts []string
@@ -206,6 +216,10 @@ func (a *app) doctor(ctx context.Context) error {
 				}
 			}
 		}
+	}
+	// From the last time the bill was read: asking again would cost $0.01.
+	if it, err := e.store().GetItem(ctx, billMetaPK); err == nil && it.Int("attemptAt") > 0 && it.Int("tagged") == 0 && it.Int("refetchFrom") == 0 {
+		u.warn("EC2 costs stay estimates until AWS can tell truner's machines from other EC2 in this account: run `truner costs --activate-tags` once")
 	}
 	if out, err := sqs.NewFromConfig(e.cfg).GetQueueAttributes(ctx, &sqs.GetQueueAttributesInput{QueueUrl: aws.String(e.out("DeadLetterQueueUrl")), AttributeNames: []sqstypes.QueueAttributeName{sqstypes.QueueAttributeNameApproximateNumberOfMessages}}); err == nil {
 		if n := out.Attributes["ApproximateNumberOfMessages"]; n != "0" {

@@ -292,6 +292,9 @@ func (cp *ControlPlane) recordLaunch(ctx context.Context, job *Job, spec *config
 	if runnerID == 0 {
 		runnerID = r.RunnerID
 	}
+	if r.AZ == "" && r.SubnetID != "" {
+		r.AZ = cp.subnetAZ(ctx, r.SubnetID)
+	}
 	var price float64
 	var err error
 	if spec.Micro {
@@ -299,14 +302,15 @@ func (cp *ControlPlane) recordLaunch(ctx context.Context, job *Job, spec *config
 	} else if price, err = cp.HourlyPrice(ctx, r.InstanceType, r.AZ, r.Lifecycle, spec.Platform()); err != nil {
 		cp.Log.Warn("price lookup failed", "type", r.InstanceType, "err", err)
 	}
-	disk := spec.Disk
+	disk, iops, throughput := spec.Disk, spec.DiskIOPS, spec.DiskThroughput
 	if spec.Micro {
-		disk = 0 // included in the MicroVM price
+		disk, iops, throughput = 0, 0, 0 // included in the MicroVM price
 	}
 	set := map[string]any{
 		"status": StatusLaunched, "runnerName": runnerName, "runnerId": runnerID, "instanceId": r.InstanceID,
 		"instanceType": r.InstanceType, "lifecycle": r.Lifecycle, "az": r.AZ, "image": spec.Image, "platform": spec.Platform(),
-		"diskGiB": disk, "price": price, "launchedAt": time.Now().Unix(), "fellBack": r.FellBack,
+		"diskGiB": disk, "diskIops": iops, "diskThroughput": throughput, "publicIp": !spec.Micro && cp.usesPublicSubnets(spec.Private),
+		"price": price, "launchedAt": time.Now().Unix(), "fellBack": r.FellBack,
 		"launchMillis": r.Took.Milliseconds(), "keepMinutes": spec.Keep, "error": "", "cpu": spec.CPU.Min,
 	}
 	if img != nil {
@@ -370,6 +374,12 @@ func (cp *ControlPlane) subnets(private bool) []string {
 		return cp.Env.PublicSubnets
 	}
 	return cp.Env.PrivateSubnets
+}
+
+// usesPublicSubnets says whether subnets(private) are the public ones, whose
+// machines have a public IPv4 address.
+func (cp *ControlPlane) usesPublicSubnets(private bool) bool {
+	return len(cp.Env.PublicSubnets) > 0 && !(private && len(cp.Env.PrivateSubnets) > 0)
 }
 
 func (cp *ControlPlane) runnerTags(job *Job, spec *config.JobSpec, runnerName string) map[string]string {
