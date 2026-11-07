@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **Old instance generations are left out by default.** With `cpu=N` and no `family`,
+  EC2 Fleet often picked the cheapest spot pool from 2018: at the median `CI / frontend`
+  took 345 s on `r5a.2xlarge` against 148 s on `c7a.2xlarge`, and `CI / security` 233 s
+  on `r5a.xlarge` against 78 s on `m8azn.xlarge`. Jobs without `family` or `type` no
+  longer get `m5*`, `c5*`, `r5*`, `z1d`, `i3*` or `x1*`. Name the family to use one.
+  `truner explain` shows what is left out.
 - **Re-runs after a spot interruption stop when they cannot work.** After someone re-ran
   a run by hand, the janitor tried to re-run job 126466730494 749 times in 24 hours, each
   answered with `403 The workflow run containing this job is already running`. It now

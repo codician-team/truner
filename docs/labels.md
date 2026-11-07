@@ -67,7 +67,7 @@ a job that still waits.
 | `runner` | profile name | – | Built-in or from config. Labels after it override it. Alias: `profile` |
 | `cpu` | `4`, `4-16`, `8+` | `2` | vCPUs: exact, inclusive range, or minimum (1–896). Aliases: `cpus`, `vcpu`, `vcpus` |
 | `ram` | `16`, `16-64` | `cpu × 4` | GiB. A single number is a minimum. Aliases: `memory`, `mem` |
-| `family` | `c7a+m7a`, `c8g`, `m7i.*` | any current generation | Instance families. With a family, `ram` defaults to "any". Alias: `families` |
+| `family` | `c7a+m7a`, `c8g`, `m7i.*` | current generations, except old ones | Instance families. With a family, `ram` defaults to "any". Alias: `families` |
 | `type` | `c7i.4xlarge+c6i.4xlarge` | – | Exact types (skips attribute-based selection). Aliases: `types`, `instance-type` |
 | `arch` | `x64`, `arm64` | `x64` | `arm64` selects Graviton. Also accepts `amd64`, `x86_64`, `aarch64`, `graviton`. Alias: `architecture` |
 | `gpu` | `1`, `4`, `true` | `0` | NVIDIA GPUs, up to 16 (use a GPU image, e.g. `runner=gpu-nvidia`). Alias: `gpus` |
@@ -84,6 +84,14 @@ availability zones (`price-capacity-optimized`). Families whose instance storage
 hard disks (`d2`, `d3`, `d3en`, `h1`) are left out too: they are cheap on spot, but
 their disks take minutes to set up and build slower than EBS. Name the family to use
 one anyway.
+
+**Old generations are left out.** EC2 still calls `m5`, `c5` and `r5` (with all their
+variants, such as `r5a` and `m5zn`), `z1d`, `i3`, `i3en`, `x1` and `x1e` current, and they
+are often the cheapest spot pools. Jobs took two to three times as long on them: at the
+median, a frontend build took 345 s on `r5a.2xlarge` and 148 s on `c7a.2xlarge`, and a
+security scan 233 s on `r5a.xlarge` and 78 s on `m8azn.xlarge`. A job without `family`
+or `type` never gets them. Name the family to use one, for example `family=m5a+m6a`.
+`truner explain` lists what is left out.
 
 **Timing-sensitive tests.** The cheapest spot pool changes from run to run, and a vCPU
 is not the same everywhere. On AMD's 7th and 8th generation (`c7a`, `m7a`, `r7a`, `c8a`,

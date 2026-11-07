@@ -45,8 +45,11 @@ func TestInstanceRequirements(t *testing.T) {
 	if r.BurstablePerformance != ec2types.BurstablePerformanceExcluded || r.AcceleratorCount.Max == nil || *r.AcceleratorCount.Max != 0 {
 		t.Fatal("defaults must exclude burstable and accelerated types")
 	}
-	if strings.Join(r.ExcludedInstanceTypes, " ") != "d2.* d3.* d3en.* h1.*" || r.LocalStorage != ec2types.LocalStorageIncluded || r.LocalStorageTypes != nil {
-		t.Fatalf("defaults must exclude hard disk families but keep EBS-only types: %+v", r)
+	if strings.Join(r.ExcludedInstanceTypes, " ") != "d2.* d3.* d3en.* h1.* m5* c5* r5* z1d* i3* x1*" || r.LocalStorage != ec2types.LocalStorageIncluded || r.LocalStorageTypes != nil {
+		t.Fatalf("defaults must exclude hard disk and old families but keep EBS-only types: %+v", r)
+	}
+	if old := InstanceRequirements(spec(t, "truner/cpu=8/family=r5a+c7a")); strings.Join(old.AllowedInstanceTypes, " ") != "r5a* c7a*" || old.ExcludedInstanceTypes != nil {
+		t.Fatalf("a named old family must stay available: %+v", old)
 	}
 	g := InstanceRequirements(spec(t, "truner/runner=gpu-nvidia"))
 	if *g.AcceleratorCount.Min != 1 || g.AcceleratorManufacturers[0] != ec2types.AcceleratorManufacturerNvidia {
