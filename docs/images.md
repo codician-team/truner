@@ -33,12 +33,15 @@ The first time a bakeable image is used in an architecture, truner:
 1. Runs the job on the **base** AMI right away. The agent installs the profile during
    boot: about 60 s for standard, several minutes for full.
 2. Starts a **builder** in the background that installs the profile, pre-downloads
-   the runner, cleans up and stops. The janitor turns it into an AMI tagged for your
+   the runner and the BuildKit image that `docker/setup-buildx-action` starts
+   (`moby/buildkit:buildx-stable-1`), cleans up and stops. The janitor turns it into an AMI tagged for your
    installation.
 3. Uses that AMI for all later jobs.
 
 On machines from a baked image, the agent starts from its own systemd unit as soon as
-the network is up. It doesn't wait for cloud-init's later stages, which wait for snapd
+the network is up. While the runner waits for its job, the agent reads Docker's
+binaries and runs `docker info` in the background, so the job's first `docker` command
+does not wait for the volume. It doesn't wait for cloud-init's later stages, which wait for snapd
 and take 5 to 20 seconds on a fresh volume. The user data script still runs
 afterwards. It finds the agent already running and does nothing, unless the image is
 older than your installation, in which case it downloads the matching agent and

@@ -96,6 +96,8 @@ func (a *Agent) osInstallProfile(ctx context.Context, profile string) error {
 
 func (a *Agent) osConfigureDocker(ctx context.Context) error { return nil }
 
+func (a *Agent) osWarmDocker(ctx context.Context) {}
+
 func (a *Agent) osRunnerDir() string { return `C:\actions-runner` }
 
 func (a *Agent) osRunnerDeps(ctx context.Context, dir string) {}
@@ -144,6 +146,8 @@ func (a *Agent) osInstallSSHKeys(keys []string) error {
 func (a *Agent) osDockerConfigDir() string {
 	return filepath.Join(os.Getenv("USERPROFILE"), ".docker")
 }
+
+func (a *Agent) osGiveToUser(ctx context.Context, dir string) error { return nil }
 
 func (a *Agent) osBakeCleanup(ctx context.Context) error {
 	for _, p := range []string{filepath.Join(winRoot, "config.b64"), filepath.Join(winRoot, "bootstrap.log"), stateDir()} {

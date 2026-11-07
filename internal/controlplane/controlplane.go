@@ -59,6 +59,7 @@ type ControlPlane struct {
 	runnerAt   time.Time
 	count      int
 	countAt    time.Time
+	microLast  int
 }
 
 type cachedRepoCfg struct {

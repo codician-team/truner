@@ -77,7 +77,7 @@ machine during these steps, so the link can be opened on any device and an inter
 install can continue.
 
 **Worker function** (SQS → Lambda). Applies access rules, the instance limit (EC2
-machines and MicroVMs together) and the budget. Resolves the spec, starts a MicroVM for a
+machines and MicroVMs together, MicroVMs counted from the job records) and the budget. Resolves the spec, starts a MicroVM for a
 micro job, claims a warm pool machine or resolves the AMI, registers a just-in-time
 runner and launches with EC2 Fleet in `instant` mode. A per-job launch template carries
 the user data and is deleted right after the launch. Capacity problems are retried with
@@ -106,7 +106,10 @@ events). Each task runs on its own, so one failing does not stop the others:
 - re-queues jobs stuck between webhook and worker (queued for 20 minutes, or launching
   for 10)
 - ends MicroVMs whose job is over (after 2 minutes), whose job was cancelled or failed
-  before it took one (after 5 minutes), or that no job knows about (after 15 minutes)
+  before it took one (after 5 minutes), or that no job knows about (after 15 minutes).
+  `ListMicrovms` is rate limited per account, so the janitor lists MicroVMs only while a
+  job record holds one, and every 15 minutes otherwise. After throttling it waits 4, 8,
+  then 16 minutes
 - redelivers failed webhook deliveries of the last 2 hours, at most 3 times each (via the
   GitHub App API)
 - re-runs jobs killed by spot interruptions once their workflow run has finished

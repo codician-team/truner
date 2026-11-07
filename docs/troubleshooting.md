@@ -109,6 +109,8 @@ or a `.github/truner.yml` syntax error.
   EBS cost.
 - Machines with hard disk instance storage (`d3en` and others) are not chosen unless
   you name their family. They used to take minutes to set up their disks.
+- Old generations (`m5`, `c5`, `r5` and their variants, `z1d`, `i3`, `x1`) are not
+  chosen unless you name their family. Jobs ran two to three times as long on them.
 - **The first micro job of each size after an upgrade** builds its MicroVM image (3–4
   minutes) and runs on an EC2 Graviton machine meanwhile. See [MicroVMs](microvms.md).
 - **`actions/checkout` is often the slowest step.** Every machine is new, so it fetches
@@ -134,7 +136,7 @@ or a `.github/truner.yml` syntax error.
 | What | Where |
 |---|---|
 | Control plane | `truner logs --control-plane [-f] [--since 2h] [JOB-ID]` (CloudWatch `/truner/<stack>/webhook`, `worker` and `janitor`) |
-| One machine | `truner logs <job-id>` (S3 `logs/<date>/<runner>.log`, uploaded when the machine ends) |
+| One machine | `truner logs <job-id>` (S3 `logs/<date>/<runner>.log`, uploaded when the machine ends and while it waits for its job, plus `<runner>.console.log` for a machine terminated before it took its job) |
 | Image builds | `s3://<bucket>/logs/bakes/<bake-id>.log` |
 | MicroVM image builds and MicroVMs | CloudWatch `/truner/<stack>/microvms` (not read by `truner logs`) |
 | Metrics | CloudWatch dashboard (`truner status` prints the link) |

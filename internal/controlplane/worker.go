@@ -354,12 +354,7 @@ func (cp *ControlPlane) runningCount(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	n := len(insts)
-	if live, err := cp.LiveMicrovms(ctx); err == nil {
-		n += len(live)
-	} else {
-		cp.Log.Warn("could not count MicroVMs", "err", err)
-	}
+	n := len(insts) + cp.countMicrovms(ctx)
 	cp.mu.Lock()
 	cp.count, cp.countAt = n+1, time.Now()
 	cp.mu.Unlock()

@@ -106,6 +106,8 @@ func (a *app) explainCmd() *cobra.Command {
 				row("memory", ram)
 				if len(spec.Families) > 0 {
 					row("families", strings.Join(spec.Families, ", "))
+				} else {
+					row("families", "current generations except "+strings.Join(controlplane.ExcludedFamilies(), ", ")+" (name one in family= to use it)")
 				}
 			}
 			row("arch", spec.Arch)

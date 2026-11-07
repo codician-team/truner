@@ -225,6 +225,7 @@ func (cp *ControlPlane) onCompleted(ctx context.Context, gh *github.Client, ev *
 			}
 			if !busy {
 				cp.Log.Info("job ended before pickup, terminating its machine", "job", wj.ID, "instance", job.InstanceID)
+				cp.saveConsole(ctx, job, "its job ended before a runner picked it up")
 				if err := cp.TerminateInstances(ctx, job.InstanceID); err != nil {
 					cp.Log.Warn("terminate failed", "err", err)
 				}

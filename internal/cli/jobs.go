@@ -88,10 +88,7 @@ func (a *app) jobsCmd() *cobra.Command {
 					case controlplane.StatusRunning, controlplane.StatusLaunched, controlplane.StatusLaunching, controlplane.StatusQueued:
 						status = a.ui.cyan(status)
 					}
-					name := j.Workflow + " / " + j.Name
-					if len(name) > 40 {
-						name = name[:39] + "…"
-					}
+					name := shorten(j.Workflow+" / "+j.Name, 40)
 					cost, billed := book.cost(&j)
 					shown := money(cost)
 					if !billed && cost > 0 {
@@ -265,13 +262,14 @@ func (a *app) logsCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			out, err := e.s3().GetObject(ctx, &s3.GetObjectInput{Bucket: aws.String(e.out("DataBucket")), Key: aws.String(key)})
-			if err != nil {
-				return fmt.Errorf("no machine log at s3://%s/%s yet (it is uploaded when the machine finishes): %w", e.out("DataBucket"), key, err)
+			get := func(ctx context.Context, key string) (io.ReadCloser, error) {
+				out, err := e.s3().GetObject(ctx, &s3.GetObjectInput{Bucket: aws.String(e.out("DataBucket")), Key: aws.String(key)})
+				if err != nil {
+					return nil, err
+				}
+				return out.Body, nil
 			}
-			defer out.Body.Close()
-			_, err = io.Copy(os.Stdout, out.Body)
-			return err
+			return printMachineLog(ctx, get, e.out("DataBucket"), key, os.Stdout)
 		},
 	}
 	cmd.Flags().BoolVar(&controlPlane, "control-plane", false, "show the webhook/worker/janitor logs")

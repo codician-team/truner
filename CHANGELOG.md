@@ -19,6 +19,60 @@
   price per runner size instead of a rate per core, the cores of the job's machine (a pinned
   `type=c8a.4xlarge` counted as 2), and Arm64 prices at the peak size for MicroVMs (they were
   priced as x64 at the baseline).
+- **Node 26 starts on MicroVMs.** Node's official Arm64 build links `libatomic.so.1`,
+  which the MicroVM image did not have, so `node` exited with status 127 (finding 8 of
+  the [MicroVMs field report](docs/field-report-microvms.md)). The image now installs
+  `libatomic1`; it is rebuilt with the upgrade. Remove the `apt-get install libatomic1`
+  workaround step afterwards, which cost each job about 10 s. EC2 machines already have
+  it through `build-essential`.
+- **`truner jobs` cuts long names between characters.** It cut the WORKFLOW / JOB
+  column after 39 bytes, which split letters such as `ş` and `ğ` and printed invalid
+  UTF-8. It now counts characters.
+- **Machines that take no job leave evidence.** When a job ended before pickup, the
+  webhook terminated its machine and no log was uploaded: job 127285209781 sat 602 s on
+  a live machine, held up a deploy group and left nothing to diagnose. The control plane
+  now keeps the console output of an EC2 machine it terminates before it took its job,
+  as `logs/<date>/<runner>.console.log`, and `truner logs <job-id>` prints it. The agent
+  also uploads its log while the runner waits for a job, after a minute and then every 5
+  minutes, and right away when the machine shuts down. The control plane needs
+  `ec2:GetConsoleOutput`, which `truner upgrade` adds.
+- **Docker jobs start faster.** In one repository's builds, `docker/setup-buildx-action`
+  took 27 s at the median: about 18 s for the first `docker version` and `docker info`,
+  which read Docker's binaries from a lazily restored volume, and about 9 s to pull
+  `moby/buildkit:buildx-stable-1`. The agent now reads Docker's binaries and runs
+  `docker info` in the background while the runner waits for its job, and baked images
+  and warm pool machines come with the BuildKit image. Baked images get it when they are
+  rebuilt after the upgrade. On machines with local NVMe, the image is copied there with
+  Docker's other data, which adds a moment to the agent's `docker` step.
+- **Old instance generations are left out by default.** With `cpu=N` and no `family`,
+  EC2 Fleet often picked the cheapest spot pool from 2018: at the median `CI / frontend`
+  took 345 s on `r5a.2xlarge` against 148 s on `c7a.2xlarge`, and `CI / security` 233 s
+  on `r5a.xlarge` against 78 s on `m8azn.xlarge`. Jobs without `family` or `type` no
+  longer get `m5*`, `c5*`, `r5*`, `z1d`, `i3*` or `x1*`. Name the family to use one.
+  `truner explain` shows what is left out.
+- **Re-runs after a spot interruption stop when they cannot work.** After someone re-ran
+  a run by hand, the janitor tried to re-run job 126466730494 749 times in 24 hours, each
+  answered with `403 The workflow run containing this job is already running`. It now
+  asks GitHub first: it waits without posting while the run is in progress, leaves the
+  job alone when the run has a newer attempt, and stops when GitHub refuses a completed
+  run's re-run.
+- **`truner doctor` reports failed janitor tasks.** It said "Everything looks good" while
+  the janitor failed 80 times in five days. It now reads the janitor's log and lists each
+  task that failed in the last 24 hours, with the count and the last error. A failure in
+  the last hour counts as a problem.
+- **Far fewer `ListMicrovms` calls.** Two installations in one account logged 162 `could
+  not count MicroVMs` warnings and 80 failed janitor runs with `ThrottlingException` in
+  five days. The API lists the whole account's MicroVMs, terminated ones too, 10 per
+  page, so one listing took 11 calls. Launches now count MicroVMs from truner's job
+  records and never list them, the check after a job takes another job's machine does
+  not list either, and the janitor lists 50 per page, only while a MicroVM is up and
+  every 15 minutes otherwise. After throttling it waits 4, 8 and then 16 minutes,
+  across all of the installation's Lambda functions. A failed list no longer leaves
+  MicroVMs out of `limits.maxInstances`.
+- **`~/.docker` belongs to the runner user.** The agent's ECR login created the folder as
+  root, so `docker/setup-buildx-action` failed with `EACCES: permission denied, mkdir
+  '/home/runner/.docker/buildx/.bin/...'`. Remove any `DOCKER_CONFIG` workaround from
+  your workflows after upgrading.
 - **A micro job that asks for x64 fails with a reason.** `truner/micro/arch=x64`, a runner
   profile with `arch: x64` or a runner name ending in `-x64` ran on an Arm64 MicroVM,
   where x64-only tools break in less obvious ways. Such jobs now fail with "micro
