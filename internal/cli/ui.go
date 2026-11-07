@@ -261,3 +261,12 @@ func humanBytes(n int64) string {
 	}
 	return fmt.Sprintf("%.1f %ciB", float64(n)/float64(div), "KMGTPE"[exp])
 }
+
+// shorten cuts s to at most n characters, ending it with "…" when cut. It
+// counts characters, not bytes, so it never splits one such as "ş".
+func shorten(s string, n int) string {
+	if r := []rune(s); len(r) > n {
+		return string(r[:n-1]) + "…"
+	}
+	return s
+}

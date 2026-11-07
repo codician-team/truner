@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestUpsertINISection(t *testing.T) {
@@ -91,5 +92,18 @@ func TestStateKeepsPendingSetups(t *testing.T) {
 	forgetSetup("us-east-1/truner")
 	if len(loadState().Setups) != 0 {
 		t.Fatal("forgetSetup did not remove the setup")
+	}
+}
+
+func TestShorten(t *testing.T) {
+	long := "CI / Güvenlik taraması ve bağımlılık denetimi (şimdilik)"
+	got := shorten(long, 40)
+	if !utf8.ValidString(got) || utf8.RuneCountInString(got) != 40 || !strings.HasSuffix(got, "…") || !strings.HasPrefix(long, strings.TrimSuffix(got, "…")) {
+		t.Fatalf("shorten(%q) = %q", long, got)
+	}
+	// 39 characters in 60 bytes: not cut.
+	short := "CI / Türkçe iş adı: ğüşıöç ĞÜŞİÖÇ ğüşıö"
+	if got := shorten(short, 40); got != short {
+		t.Fatalf("a name of %d characters must not be cut: %q", utf8.RuneCountInString(short), got)
 	}
 }

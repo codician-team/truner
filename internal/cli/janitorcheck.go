@@ -99,10 +99,4 @@ func reportJanitor(u *ui, stack string, fails []janitorFailure, now time.Time, p
 }
 
 // oneLine joins an error's lines and shortens it to n characters.
-func oneLine(s string, n int) string {
-	s = strings.Join(strings.Fields(s), " ")
-	if r := []rune(s); len(r) > n {
-		return string(r[:n-1]) + "…"
-	}
-	return s
-}
+func oneLine(s string, n int) string { return shorten(strings.Join(strings.Fields(s), " "), n) }

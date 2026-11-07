@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **`truner jobs` cuts long names between characters.** It cut the WORKFLOW / JOB
+  column after 39 bytes, which split letters such as `ş` and `ğ` and printed invalid
+  UTF-8. It now counts characters.
 - **Machines that take no job leave evidence.** When a job ended before pickup, the
   webhook terminated its machine and no log was uploaded: job 127285209781 sat 602 s on
   a live machine, held up a deploy group and left nothing to diagnose. The control plane
