@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **Re-runs after a spot interruption stop when they cannot work.** After someone re-ran
+  a run by hand, the janitor tried to re-run job 126466730494 749 times in 24 hours, each
+  answered with `403 The workflow run containing this job is already running`. It now
+  asks GitHub first: it waits without posting while the run is in progress, leaves the
+  job alone when the run has a newer attempt, and stops when GitHub refuses a completed
+  run's re-run.
 - **`truner doctor` reports failed janitor tasks.** It said "Everything looks good" while
   the janitor failed 80 times in five days. It now reads the janitor's log and lists each
   task that failed in the last 24 hours, with the count and the last error. A failure in

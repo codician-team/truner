@@ -349,6 +349,25 @@ func (c *Client) GetJob(ctx context.Context, installationID int64, owner, repo s
 	return out, err
 }
 
+// Run is a workflow run, as of its latest attempt.
+type Run struct {
+	ID         int64  `json:"id"`
+	RunAttempt int    `json:"run_attempt"`
+	Status     string `json:"status"` // queued | in_progress | completed | ...
+	Conclusion string `json:"conclusion"`
+}
+
+// GetRun fetches a workflow run.
+func (c *Client) GetRun(ctx context.Context, installationID int64, owner, repo string, id int64) (*Run, error) {
+	auth, err := c.asInstallation(ctx, installationID)
+	if err != nil {
+		return nil, err
+	}
+	out := &Run{}
+	err = c.do(ctx, auth, http.MethodGet, fmt.Sprintf("/repos/%s/%s/actions/runs/%d", owner, repo, id), nil, out)
+	return out, err
+}
+
 // RerunJob re-runs a single job (and its dependents).
 func (c *Client) RerunJob(ctx context.Context, installationID int64, owner, repo string, id int64) error {
 	auth, err := c.asInstallation(ctx, installationID)

@@ -1,6 +1,7 @@
 package controlplane
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/codician-team/truner/internal/agentcfg"
 	"github.com/codician-team/truner/internal/config"
+	"github.com/codician-team/truner/internal/github"
 	"github.com/codician-team/truner/internal/labels"
 )
 
@@ -64,6 +66,25 @@ func TestBuildOverrides(t *testing.T) {
 	o = buildOverrides(spec(t, "truner"), []string{"s1", "s2"})
 	if len(o) != 2 || o[1].InstanceRequirements == nil {
 		t.Fatal("attribute-based selection uses one override per subnet")
+	}
+}
+
+func TestRerunRefused(t *testing.T) {
+	for _, c := range []struct {
+		err  error
+		want bool
+	}{
+		{&github.Error{Status: 403, Message: "The workflow run containing this job is already running"}, true},
+		{&github.Error{Status: 403, Message: "You have exceeded a secondary rate limit"}, false},
+		{&github.Error{Status: 404, Message: "Not Found"}, true},
+		{&github.Error{Status: 422, Message: "Unprocessable"}, true},
+		{&github.Error{Status: 429}, false},
+		{&github.Error{Status: 502}, false},
+		{errors.New("connection reset"), false},
+	} {
+		if got := rerunRefused(c.err); got != c.want {
+			t.Errorf("%v: got %v", c.err, got)
+		}
 	}
 }
 
