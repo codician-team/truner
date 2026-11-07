@@ -58,6 +58,7 @@ type fakeAWS struct {
 	fleetErr  string // error code every CreateFleet returns
 	nextID    int
 	objects   map[string][]byte // S3, keyed by "bucket/key"
+	consoles  []string          // instances whose console output was read
 	images    map[string]string // AMI id -> state
 
 	microImages   map[string]*fakeMicroImage
@@ -65,6 +66,9 @@ type fakeAWS struct {
 	microBuilds   []map[string]any // CreateMicrovmImage and UpdateMicrovmImage requests
 	microRuns     []map[string]any // RunMicrovm requests
 	microFail     string           // error type RunMicrovm returns
+	microLists    int              // ListMicrovms calls
+	microListSize string           // maxResults of the last ListMicrovms call
+	microListFail string           // error type ListMicrovms returns
 	microDeleted  []string         // deleted image versions
 	microLaunched int
 }
@@ -229,6 +233,12 @@ func (f *fakeAWS) microAPI(w http.ResponseWriter, r *http.Request, body []byte) 
 		reply(200, map[string]any{"microvmId": m.id, "endpoint": m.id + ".lambda-microvm.us-east-1.on.aws", "imageArn": m.image,
 			"imageVersion": in["imageVersion"], "maximumDurationInSeconds": in["maximumDurationInSeconds"], "startedAt": m.started.Unix(), "state": m.state})
 	case parts[0] == "microvms" && len(parts) == 1 && r.Method == http.MethodGet:
+		f.microLists++
+		f.microListSize = r.URL.Query().Get("maxResults")
+		if f.microListFail != "" {
+			fail(400, f.microListFail)
+			return
+		}
 		var items []map[string]any
 		for _, m := range f.microvms {
 			items = append(items, map[string]any{"microvmId": m.id, "imageArn": m.image, "imageVersion": "1", "startedAt": m.started.Unix(), "state": m.state})
@@ -370,6 +380,10 @@ func (f *fakeAWS) ec2(w http.ResponseWriter, action string, form url.Values) {
 		write(`<instancesSet/>`)
 	case "DescribeLaunchTemplates":
 		write(`<launchTemplates/>`)
+	case "GetConsoleOutput":
+		f.consoles = append(f.consoles, form.Get("InstanceId"))
+		out := base64.StdEncoding.EncodeToString([]byte("[  OK  ] Reached target Multi-User System.\n"))
+		write(`<instanceId>` + form.Get("InstanceId") + `</instanceId><timestamp>2026-11-05T10:00:00.000Z</timestamp><output>` + out + `</output>`)
 	case "CreateTags":
 		for k, v := range form {
 			if strings.HasPrefix(k, "ResourceId.") {
@@ -407,6 +421,9 @@ type fakeGitHub struct {
 	mu          sync.Mutex
 	jitNames    []string
 	jobStatus   map[int64]string
+	runs        map[int64]fakeRun // by run id
+	reruns      []int64           // jobs re-run
+	rerunStatus int               // status of re-run requests (0: 201)
 	repoCfg     string
 	deleted     int
 	appOwner    string // owner of apps created through the manifest flow
@@ -474,9 +491,38 @@ func (g *fakeGitHub) handler() http.Handler {
 		if st == "" {
 			st = "queued"
 		}
-		json.NewEncoder(w).Encode(map[string]any{"id": id, "status": st})
+		if st == "gone" {
+			http.Error(w, `{"message":"Not Found"}`, 404)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{"id": id, "status": st, "run_id": 900, "run_attempt": 1})
+	})
+	mux.HandleFunc("GET /repos/{o}/{r}/actions/runs/{id}", func(w http.ResponseWriter, r *http.Request) {
+		var id int64
+		fmt.Sscan(r.PathValue("id"), &id)
+		g.mu.Lock()
+		run := g.runs[id]
+		g.mu.Unlock()
+		json.NewEncoder(w).Encode(map[string]any{"id": id, "run_attempt": run.attempt, "status": run.status})
+	})
+	mux.HandleFunc("POST /repos/{o}/{r}/actions/jobs/{id}/rerun", func(w http.ResponseWriter, r *http.Request) {
+		var id int64
+		fmt.Sscan(r.PathValue("id"), &id)
+		g.mu.Lock()
+		defer g.mu.Unlock()
+		g.reruns = append(g.reruns, id)
+		if g.rerunStatus != 0 {
+			http.Error(w, `{"message":"The workflow run containing this job is already running"}`, g.rerunStatus)
+			return
+		}
+		w.WriteHeader(201)
 	})
 	return mux
+}
+
+type fakeRun struct {
+	attempt int
+	status  string
 }
 
 type harness struct {
@@ -499,7 +545,7 @@ func newHarness(t *testing.T) *harness {
 		microImages: map[string]*fakeMicroImage{}, microvms: map[string]*fakeMicrovm{}}
 	awsSrv := httptest.NewServer(fa)
 	t.Cleanup(awsSrv.Close)
-	fg := &fakeGitHub{jobStatus: map[int64]string{}}
+	fg := &fakeGitHub{jobStatus: map[int64]string{}, runs: map[int64]fakeRun{}}
 	ghSrv := httptest.NewServer(fg.handler())
 	t.Cleanup(ghSrv.Close)
 	t.Setenv("TRUNER_GITHUB_API", ghSrv.URL)
@@ -742,6 +788,33 @@ func TestIntegrationCancelledBeforePickup(t *testing.T) {
 	if h.gh.deleted == 0 {
 		t.Fatal("runner registration must be removed")
 	}
+	key := "data/" + ConsoleLogKey(MachineLogKey(j.RunnerName, time.Unix(j.LaunchedAt, 0)))
+	if got := string(h.aws.objects[key]); !strings.Contains(got, "console output of "+j.InstanceID) ||
+		!strings.Contains(got, "its job ended before a runner picked it up") || !strings.Contains(got, "Reached target Multi-User System") {
+		t.Fatalf("the console output of a machine that took no job must be kept at %s: %q", key, got)
+	}
+}
+
+// The janitor keeps the console output of a machine whose runner did not take
+// its job in time, before it terminates it.
+func TestIntegrationIdleMachineKeepsConsole(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	h.webhook("queued", 3101, []string{"truner/cpu=2"}, "", "")
+	h.drainQueue()
+	j := h.job(3101)
+	h.cp.Store.UpdateJob(ctx, 3101, map[string]any{"launchedAt": time.Now().Add(-26 * time.Minute).Unix()}, nil)
+	insts, _ := h.cp.ManagedInstances(ctx)
+	if err := h.cp.reconcileJobs(ctx, insts, nil); err != nil {
+		t.Fatal(err)
+	}
+	if st := h.aws.instances[j.InstanceID].state; st != "terminated" || len(h.aws.consoles) != 1 || h.aws.consoles[0] != j.InstanceID {
+		t.Fatalf("expected the console read before termination: state %s, consoles %v", st, h.aws.consoles)
+	}
+	key := "data/" + ConsoleLogKey(MachineLogKey(j.RunnerName, time.Now().Add(-26*time.Minute)))
+	if got := string(h.aws.objects[key]); !strings.Contains(got, "runner did not pick up the job in time") {
+		t.Fatalf("console output at %s: %q", key, got)
+	}
 }
 
 func TestIntegrationInvalidLabelGetsErrorRunner(t *testing.T) {
@@ -846,5 +919,73 @@ func TestIntegrationQuotaWait(t *testing.T) {
 	h.cp.ProcessJob(ctx, 9502)
 	if j := h.job(9502); j.Status != StatusQueued || j.Attempts != 1 {
 		t.Fatalf("a capacity error counts as an attempt: %+v", j)
+	}
+}
+
+// A job killed by a spot interruption is re-run once its run completes, and
+// not at all when someone re-ran the run meanwhile or GitHub refuses.
+func TestIntegrationReruns(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	schedule := func(id int64) {
+		h.cp.Store.PutItem(ctx, fmt.Sprintf("rerun#%d", id), Item{"coll": collReruns, "ts": time.Now().Unix(), "jobId": id, "runId": 900,
+			"owner": "acme", "repo": "app", "installationId": 1}, time.Hour, true)
+	}
+	pending := func() int {
+		items, _ := h.cp.Store.ItemsInColl(ctx, collReruns)
+		return len(items)
+	}
+	run := func(attempt int, status string) {
+		h.gh.mu.Lock()
+		h.gh.runs[900] = fakeRun{attempt, status}
+		h.gh.mu.Unlock()
+	}
+
+	// While the run is in progress, nothing is posted.
+	schedule(9801)
+	run(1, "in_progress")
+	for range 3 {
+		h.cp.processReruns(ctx)
+	}
+	if len(h.gh.reruns) != 0 || pending() != 1 {
+		t.Fatalf("no re-run while the run is in progress: %v, %d pending", h.gh.reruns, pending())
+	}
+	// Once it completed, the job is re-run once.
+	run(1, "completed")
+	h.cp.processReruns(ctx)
+	h.cp.processReruns(ctx)
+	if len(h.gh.reruns) != 1 || h.gh.reruns[0] != 9801 || pending() != 0 {
+		t.Fatalf("expected one re-run: %v, %d pending", h.gh.reruns, pending())
+	}
+
+	// Someone re-ran the run by hand (job 126466730494): truner leaves it.
+	schedule(9802)
+	run(2, "in_progress")
+	h.cp.processReruns(ctx)
+	if len(h.gh.reruns) != 1 || pending() != 0 {
+		t.Fatalf("a run with a newer attempt is not re-run again: %v, %d pending", h.gh.reruns, pending())
+	}
+
+	// A server error is tried again, a refusal is not.
+	run(1, "completed")
+	schedule(9803)
+	h.gh.rerunStatus = 500
+	h.cp.processReruns(ctx)
+	if len(h.gh.reruns) != 2 || pending() != 1 {
+		t.Fatalf("a server error is tried again later: %v, %d pending", h.gh.reruns, pending())
+	}
+	h.gh.rerunStatus = 403
+	h.cp.processReruns(ctx)
+	h.cp.processReruns(ctx)
+	if len(h.gh.reruns) != 3 || pending() != 0 {
+		t.Fatalf("a refused re-run is not tried again: %v, %d pending", h.gh.reruns, pending())
+	}
+
+	// The job is gone.
+	h.gh.jobStatus[9804] = "gone"
+	schedule(9804)
+	h.cp.processReruns(ctx)
+	if len(h.gh.reruns) != 3 || pending() != 0 {
+		t.Fatalf("a job GitHub no longer has is dropped: %v, %d pending", h.gh.reruns, pending())
 	}
 }

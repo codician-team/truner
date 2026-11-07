@@ -555,6 +555,7 @@ Resources:
               - Sid: ManageOwnResources
                 Effect: Allow
                 Action:
+                  - ec2:GetConsoleOutput
                   - ec2:TerminateInstances
                   - ec2:StartInstances
                   - ec2:StopInstances

@@ -56,6 +56,11 @@ fi
 if command -v docker >/dev/null 2>&1; then
   try systemctl enable --now docker
   getent group docker >/dev/null && usermod -aG docker "$RUNNER_USER"
+  # Baked images and pool machines keep the image docker/setup-buildx-action
+  # starts BuildKit from, so buildx only checks its tag instead of pulling it.
+  if [ -n "${TRUNER_PRELOAD:-}" ]; then
+    try docker pull -q moby/buildkit:buildx-stable-1
+  fi
 fi
 command -v gh >/dev/null 2>&1 || "${APT[@]}" install gh || warn "gh installation failed"
 

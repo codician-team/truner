@@ -53,7 +53,8 @@ runs-on: truner/runner=check/run=${{ github.run_id }}-check
 ## What a MicroVM has
 
 - **Ubuntu 24.04 userland on Arm64 (Graviton)**, with git, git-lfs, curl, wget, jq,
-  Python 3 with pip and venv, make, zip, xz, zstd, rsync and an SSH client. Jobs run as
+  Python 3 with pip and venv, make, zip, xz, zstd, rsync, an SSH client, and
+  `libatomic1`, which Node.js 26 and later need. Jobs run as
   root, because Lambda's MicroVM container does not let `sudo` raise a user's
   privileges; `sudo` still works, and `apt-get install` works for anything else. `setup-node`, `setup-python`,
   `setup-go` and similar actions download Arm64 builds as usual.

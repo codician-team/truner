@@ -42,12 +42,13 @@ const (
 
 // microDockerfile builds the image the snapshot is taken from: Ubuntu 24.04
 // with the tools short jobs commonly use. The agent installs the runner when
-// it starts, before Lambda calls /ready.
+// it starts, before Lambda calls /ready. Node.js's official Arm64 builds
+// (Node 26 and later) need libatomic1.
 const microDockerfile = `FROM public.ecr.aws/ubuntu/ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates curl wget git git-lfs gnupg jq less lsb-release \
-    make file openssh-client python3 python3-pip python3-venv rsync sudo tar gzip unzip zip xz-utils zstd libicu74 \
+    make file openssh-client python3 python3-pip python3-venv rsync sudo tar gzip unzip zip xz-utils zstd libicu74 libatomic1 \
  && rm -rf /var/lib/apt/lists/*
 COPY truner-agent /usr/local/bin/truner-agent
 COPY microvm.json /etc/truner/microvm.json
@@ -495,11 +496,13 @@ func (cp *ControlPlane) LiveMicrovms(ctx context.Context) (map[string]mvmtypes.M
 	if !cp.MicroEnabled() {
 		return out, nil
 	}
-	if items, err := cp.Store.ItemsInColl(ctx, collMicro); err != nil || len(items) == 0 {
-		return out, err
+	if items, err := cp.Store.ItemsInColl(ctx, collMicro); err != nil {
+		return nil, err
+	} else if len(items) == 0 {
+		return out, nil
 	}
 	mine := ":microvm-image:" + cp.Env.Stack + "-micro-"
-	p := mvm.NewListMicrovmsPaginator(cp.Micro, &mvm.ListMicrovmsInput{})
+	p := mvm.NewListMicrovmsPaginator(cp.Micro, &mvm.ListMicrovmsInput{}, func(o *mvm.ListMicrovmsPaginatorOptions) { o.Limit = microListPage })
 	for p.HasMorePages() {
 		page, err := p.NextPage(ctx)
 		if err != nil {

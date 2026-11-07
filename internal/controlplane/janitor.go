@@ -42,7 +42,7 @@ func (cp *ControlPlane) RunJanitor(ctx context.Context) error {
 	var microvms map[string]mvmtypes.MicrovmItem
 	run("microvms", 30*time.Second, func(ctx context.Context) error {
 		var err error
-		microvms, err = cp.LiveMicrovms(ctx)
+		microvms, err = cp.janitorMicrovms(ctx)
 		return err
 	})
 	run("jobs", 90*time.Second, func(ctx context.Context) error { return cp.reconcileJobs(ctx, instances, microvms) })
@@ -247,6 +247,7 @@ func (cp *ControlPlane) checkUnpickedJob(ctx context.Context, gh *github.Client,
 	reason := "machine stopped before picking up the job"
 	if alive {
 		reason = "runner did not pick up the job in time"
+		cp.saveConsole(ctx, j, reason)
 		cp.TerminateInstances(ctx, j.InstanceID)
 	}
 	if j.RunnerID != 0 {
@@ -346,16 +347,64 @@ func (cp *ControlPlane) processReruns(ctx context.Context) error {
 			cp.Store.DeleteItem(ctx, pk)
 			continue
 		}
-		err := gh.RerunJob(ctx, it.Int("installationId"), it.Str("owner"), it.Str("repo"), it.Int("jobId"))
+		done, err := cp.rerun(ctx, gh, it)
 		if err != nil {
-			// Usually "the workflow run is still in progress"; try again later.
 			cp.Log.Info("re-run not possible yet", "job", it.Int("jobId"), "err", err)
-			continue
 		}
-		cp.Log.Info("re-ran job after spot interruption", "job", it.Int("jobId"))
-		cp.Store.DeleteItem(ctx, pk)
+		if done {
+			cp.Store.DeleteItem(ctx, pk)
+		}
 	}
 	return nil
+}
+
+// rerun re-runs a job killed by a spot interruption once its workflow run has
+// completed: GitHub refuses while the run is in progress. done says that the
+// job needs no further try: it was re-run, someone re-ran its run meanwhile,
+// or GitHub refused for good.
+func (cp *ControlPlane) rerun(ctx context.Context, gh *github.Client, it Item) (done bool, err error) {
+	inst, owner, repo, id := it.Int("installationId"), it.Str("owner"), it.Str("repo"), it.Int("jobId")
+	log := cp.Log.With("job", id, "repo", owner+"/"+repo)
+	job, err := gh.GetJob(ctx, inst, owner, repo, id)
+	if err == nil {
+		var run *github.Run
+		if run, err = gh.GetRun(ctx, inst, owner, repo, job.RunID); err == nil {
+			switch {
+			case job.RunAttempt > 0 && run.RunAttempt > job.RunAttempt:
+				log.Info("not re-running job after spot interruption: its run was re-run meanwhile", "attempt", run.RunAttempt)
+				return true, nil
+			case run.Status != "completed":
+				return false, fmt.Errorf("its run is %s", run.Status)
+			}
+			err = gh.RerunJob(ctx, inst, owner, repo, id)
+		}
+	}
+	switch {
+	case err == nil:
+		log.Info("re-ran job after spot interruption")
+		return true, nil
+	case rerunRefused(err):
+		log.Warn("GitHub refused to re-run the job after spot interruption", "err", err)
+		return true, nil
+	}
+	return false, err
+}
+
+// rerunRefused reports whether GitHub refused a re-run for good: the job is
+// gone, or its run cannot be re-run, for example because it runs again. Rate
+// limits and server errors are worth another try.
+func rerunRefused(err error) bool {
+	var ge *github.Error
+	if !errors.As(err, &ge) {
+		return false
+	}
+	switch ge.Status {
+	case 403:
+		return !strings.Contains(strings.ToLower(ge.Message), "rate limit")
+	case 404, 409, 410, 422:
+		return true
+	}
+	return false
 }
 
 // HandleSpotInterruption marks the job of an interrupted instance so it can

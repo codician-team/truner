@@ -287,6 +287,16 @@ func (rp *runnerProcess) started() bool {
 	return false
 }
 
+// idleLogDue says when to upload the log while the runner waits for its job:
+// after a minute, then every 5 minutes. A machine terminated before it takes
+// its job may upload nothing else.
+func idleLogDue(start, uploaded, now time.Time) bool {
+	if uploaded.IsZero() {
+		return now.Sub(start) >= time.Minute
+	}
+	return now.Sub(uploaded) >= 5*time.Minute
+}
+
 // superviseRunner waits for the runner, enforcing the idle and max lifetimes.
 func (a *Agent) superviseRunner(ctx context.Context, rp *runnerProcess) {
 	idle := time.Duration(a.Cfg.IdleMinutes) * time.Minute
@@ -300,16 +310,28 @@ func (a *Agent) superviseRunner(ctx context.Context, rp *runnerProcess) {
 	t := time.NewTicker(5 * time.Second)
 	defer t.Stop()
 	start := time.Now()
+	var uploaded time.Time
 	for {
 		select {
 		case <-rp.done:
 			a.Log.Info("runner exited", "err", rp.exitErr, "ranJob", rp.started())
 			return
 		case <-ctx.Done():
+			// The machine shuts down: upload first, it may not get to the end.
+			a.Log.Warn("agent stopped, stopping the runner", "ranJob", rp.started())
+			uctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			a.uploadLog(uctx)
+			cancel()
 			killTree(rp.cmd)
 			<-rp.done
 			return
 		case <-t.C:
+			if !rp.started() && idleLogDue(start, uploaded, time.Now()) {
+				uploaded = time.Now()
+				uctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+				a.uploadLog(uctx)
+				cancel()
+			}
 			if !rp.started() && time.Since(start) > idle {
 				a.warn(fmt.Sprintf("no job picked up within %s; shutting down", idle))
 				killTree(rp.cmd)

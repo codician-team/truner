@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -207,6 +208,18 @@ func buildOverrides(spec *config.JobSpec, subnets []string) []ec2types.FleetLaun
 // drop every type without instance storage.)
 var hddFamilies = []string{"d2.*", "d3.*", "d3en.*", "h1.*"}
 
+// oldFamilies are generations from 2017 to 2019 (and x1 from 2016) that EC2
+// still lists as current. They are often the cheapest spot pools, and jobs ran
+// two to three times as long on them: at the median, a frontend build took
+// 345 s on r5a.2xlarge and 148 s on c7a.2xlarge. Like hddFamilies, they are
+// only used when a job names their family. The wildcards cover the variants
+// (m5* is m5, m5a, m5ad, m5d, m5dn, m5n and m5zn).
+var oldFamilies = []string{"m5*", "c5*", "r5*", "z1d*", "i3*", "x1*"}
+
+// ExcludedFamilies are the instance types a job without family= or type=
+// never gets.
+func ExcludedFamilies() []string { return append(slices.Clone(hddFamilies), oldFamilies...) }
+
 // InstanceRequirements maps a spec to EC2 attribute-based instance selection.
 func InstanceRequirements(spec *config.JobSpec) *ec2types.InstanceRequirementsRequest {
 	req := &ec2types.InstanceRequirementsRequest{
@@ -232,7 +245,7 @@ func InstanceRequirements(spec *config.JobSpec) *ec2types.InstanceRequirementsRe
 		req.BurstablePerformance = ec2types.BurstablePerformanceIncluded
 	} else {
 		req.BurstablePerformance = ec2types.BurstablePerformanceExcluded
-		req.ExcludedInstanceTypes = hddFamilies
+		req.ExcludedInstanceTypes = ExcludedFamilies()
 	}
 	if spec.NVMe {
 		req.LocalStorage = ec2types.LocalStorageRequired
