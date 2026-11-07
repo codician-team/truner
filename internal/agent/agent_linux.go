@@ -390,6 +390,11 @@ func (a *Agent) osInstallSSHKeys(keys []string) error {
 
 func (a *Agent) osDockerConfigDir() string { return filepath.Join(a.homeDir(), ".docker") }
 
+// osGiveToUser gives the runner user a folder the agent created as root.
+func (a *Agent) osGiveToUser(ctx context.Context, dir string) error {
+	return a.sh(ctx, "chown", "-R", a.user()+":"+a.user(), dir)
+}
+
 func (a *Agent) osBakeCleanup(ctx context.Context) error {
 	cmds := [][]string{
 		{"apt-get", "clean"},

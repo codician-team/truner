@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **`~/.docker` belongs to the runner user.** The agent's ECR login created the folder as
+  root, so `docker/setup-buildx-action` failed with `EACCES: permission denied, mkdir
+  '/home/runner/.docker/buildx/.bin/...'`. Remove any `DOCKER_CONFIG` workaround from
+  your workflows after upgrading.
 - **A micro job that asks for x64 fails with a reason.** `truner/micro/arch=x64`, a runner
   profile with `arch: x64` or a runner name ending in `-x64` ran on an Arm64 MicroVM,
   where x64-only tools break in less obvious ways. Such jobs now fail with "micro

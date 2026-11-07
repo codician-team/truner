@@ -145,6 +145,8 @@ func (a *Agent) osDockerConfigDir() string {
 	return filepath.Join(os.Getenv("USERPROFILE"), ".docker")
 }
 
+func (a *Agent) osGiveToUser(ctx context.Context, dir string) error { return nil }
+
 func (a *Agent) osBakeCleanup(ctx context.Context) error {
 	for _, p := range []string{filepath.Join(winRoot, "config.b64"), filepath.Join(winRoot, "bootstrap.log"), stateDir()} {
 		os.RemoveAll(p)

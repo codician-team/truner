@@ -347,7 +347,13 @@ func (a *Agent) ecrLogin(ctx context.Context) error {
 	if len(out.AuthorizationData) == 0 || out.AuthorizationData[0].AuthorizationToken == nil {
 		return errors.New("no authorization data")
 	}
-	token := *out.AuthorizationData[0].AuthorizationToken
+	return a.saveDockerAuth(ctx, *out.AuthorizationData[0].AuthorizationToken)
+}
+
+// saveDockerAuth adds the ECR login to the runner user's Docker config. The
+// agent runs as root, but jobs write to that folder too: setup-buildx-action
+// installs buildx under it.
+func (a *Agent) saveDockerAuth(ctx context.Context, token string) error {
 	dir := a.osDockerConfigDir()
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
@@ -364,7 +370,10 @@ func (a *Agent) ecrLogin(ctx context.Context) error {
 	auths[a.Cfg.ECRRegistry] = map[string]string{"auth": token}
 	conf["auths"] = auths
 	data, _ := json.MarshalIndent(conf, "", "  ")
-	return os.WriteFile(path, data, 0o600)
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return err
+	}
+	return a.osGiveToUser(ctx, dir)
 }
 
 func (a *Agent) installSSHKeys(ctx context.Context) error {
