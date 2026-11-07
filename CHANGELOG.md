@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.1.6
 
 - **`truner costs` and `truner status` show what AWS billed.** A job's cost starts as an
   estimate, and AWS Cost Explorer's number replaces it about a day after the day ended.
