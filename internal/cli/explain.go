@@ -166,7 +166,7 @@ func explainMicro(u *ui, row func(k, v string), spec *config.JobSpec) {
 	row("disk", fmt.Sprintf("%d GiB", spec.Disk))
 	row("cache", spec.Cache)
 	row("timeout", fmt.Sprintf("%d min (idle %d min)", spec.Timeout, spec.IdleTimeout))
-	row("price", fmt.Sprintf("$%.4f/h at baseline, per second, plus up to $%.4f of snapshot reads per start (us-east-1)", controlplane.MicroHourlyPrice(v), controlplane.MicroStartPrice(v)))
+	row("price", fmt.Sprintf("$%.4f/h at baseline, per second, about %.2f times that with bursting, plus about $%.4f of snapshot reads per start (us-east-1)", controlplane.MicroHourlyPrice(v), controlplane.MicroBurstFactor, controlplane.MicroStartPrice(v)))
 	for _, w := range spec.Warnings {
 		u.warn("%s", w)
 	}

@@ -45,12 +45,14 @@ func (a *app) jobsCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			book := e.loadBill(ctx)
 			for {
 				jobs, err := e.jobsSince(ctx, days)
 				if err != nil {
 					return err
 				}
 				var rows [][]string
+				anyEstimate := false
 				for _, j := range jobs {
 					if repo != "" && !strings.EqualFold(j.FullName(), repo) {
 						continue
@@ -87,7 +89,13 @@ func (a *app) jobsCmd() *cobra.Command {
 						status = a.ui.cyan(status)
 					}
 					name := shorten(j.Workflow+" / "+j.Name, 40)
-					rows = append(rows, []string{ago(time.Unix(j.TS, 0)), j.FullName(), name, status, firstNonEmpty(machine, "-"), dur(wait), dur(run), money(j.Cost), strconv.FormatInt(j.JobID, 10)})
+					cost, billed := book.cost(&j)
+					shown := money(cost)
+					if !billed && cost > 0 {
+						shown = approx(cost)
+						anyEstimate = true
+					}
+					rows = append(rows, []string{ago(time.Unix(j.TS, 0)), j.FullName(), name, status, firstNonEmpty(machine, "-"), dur(wait), dur(run), shown, strconv.FormatInt(j.JobID, 10)})
 				}
 				if watch {
 					fmt.Fprint(a.ui.out, "\x1b[H\x1b[2J")
@@ -96,6 +104,9 @@ func (a *app) jobsCmd() *cobra.Command {
 					a.ui.printf("No jobs yet. Use `runs-on: %s` in a workflow, with each job's own name in its run= token.\n", exampleLabel(e.labelPrefix(), "cpu=2", "build"))
 				} else {
 					a.ui.table([]string{"QUEUED", "REPOSITORY", "WORKFLOW / JOB", "STATUS", "MACHINE", "WAIT", "DURATION", "COST", "JOB ID"}, rows)
+					if anyEstimate {
+						a.ui.printf("%s\n", a.ui.dim("~ is an estimate. `truner costs` shows what AWS billed, about a day after a job ran."))
+					}
 				}
 				if !watch {
 					return nil
@@ -118,9 +129,10 @@ func (a *app) jobsCmd() *cobra.Command {
 func (a *app) costsCmd() *cobra.Command {
 	var days int
 	var by string
+	var estimatesOnly, refresh, activateTags bool
 	cmd := &cobra.Command{
 		Use:   "costs",
-		Short: "Show estimated spend and savings compared to GitHub-hosted runners",
+		Short: "Show spend, as AWS billed it where it has, and savings compared to GitHub-hosted runners",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 			u := a.ui
@@ -128,22 +140,50 @@ func (a *app) costsCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			now := time.Now()
+			if activateTags {
+				return e.activateCostTags(ctx, u, now)
+			}
 			jobs, err := e.jobsSince(ctx, days)
 			if err != nil {
 				return err
 			}
+			var book *billBook
+			if !estimatesOnly {
+				if err := e.refreshBill(ctx, now.Add(-time.Duration(days)*24*time.Hour), now, refresh); err != nil {
+					u.warn("%v", err)
+				}
+				book = e.loadBill(ctx)
+			}
 			var us []costs.Usage
-			for _, j := range jobs {
+			through, ec2Estimates := "", false
+			for i := range jobs {
+				j := &jobs[i]
+				cost, billed := book.cost(j)
+				if billed {
+					through = max(through, j.BillEstimate(e.name).Day)
+				} else if cost > 0 && !strings.HasPrefix(firstNonEmpty(j.RanOnType, j.InstanceType), "microvm-") {
+					ec2Estimates = true
+				}
 				us = append(us, costs.Usage{Repo: j.FullName(), Workflow: j.Workflow, Status: j.Status, InstanceType: firstNonEmpty(j.RanOnType, j.InstanceType),
-					Lifecycle: firstNonEmpty(j.RanOnLifecycle, j.Lifecycle), Platform: j.Platform, CPU: j.CPU, Cost: j.Cost, QueuedAt: j.TS, StartedAt: j.StartedAt, CompletedAt: j.CompletedAt})
+					Lifecycle: firstNonEmpty(j.RanOnLifecycle, j.Lifecycle), Platform: j.Platform, CPU: j.CPU, Cost: cost, Billed: billed, QueuedAt: j.TS, StartedAt: j.StartedAt, CompletedAt: j.CompletedAt})
 			}
 			s := costs.Summarize(us)
 			u.printf("%s (last %d days)\n\n", u.bold("truner costs"), days)
 			u.printf("  Jobs              %d\n", s.Jobs)
 			u.printf("  Runner minutes    %.0f\n", s.Minutes)
 			u.printf("  Spot share        %.0f%%\n", s.SpotShare*100)
-			u.printf("  Estimated cost    %s\n", u.bold(money(s.Cost)))
-			u.printf("  GitHub-hosted     ~%s for the same minutes on same-size runners\n", money(s.GitHubCost))
+			if s.Billed > 0 {
+				u.printf("  Billed by AWS     %s through %s\n", money(s.Billed), through)
+				u.printf("  Estimated         %s AWS has not billed these yet, or cannot show them as truner's\n", money(s.Estimated))
+				u.printf("  Total             %s\n", u.bold(money(s.Cost)))
+			} else {
+				u.printf("  Estimated cost    %s\n", u.bold(money(s.Cost)))
+			}
+			if usd, last := book.platform(now.Add(-time.Duration(days) * 24 * time.Hour).UTC().Format(time.DateOnly)); usd > 0 {
+				u.printf("  Stack itself      %s billed through %s: cache storage, images, control plane\n", money(usd), last)
+			}
+			u.printf("  GitHub-hosted     ~%s for the same minutes on runners of the size each job had\n", money(s.GitHubCost))
 			if s.GitHubCost > s.Cost && s.GitHubCost > 0 {
 				u.printf("  You saved         %s\n", u.green(fmt.Sprintf("~%s (%.0f%%)", money(s.GitHubCost-s.Cost), (1-s.Cost/s.GitHubCost)*100)))
 			}
@@ -180,12 +220,21 @@ func (a *app) costsCmd() *cobra.Command {
 			if len(table) > 0 {
 				u.table([]string{strings.ToUpper(firstNonEmpty(by, "repo")), "COST", "SHARE"}, table)
 			}
-			u.printf("\n%s\n", u.dim("Estimates use EC2 spot/on-demand prices at launch plus EBS; GitHub prices are approximate list prices. AWS Cost Explorer has the exact numbers (filter by tag truner:repository)."))
+			u.printf("\n%s\n", u.dim("Billed: what AWS Cost Explorer shows about a day later, split between jobs by their estimates, per day and machine type. EC2 counts only with the truner:stack tag, so other EC2 in the account stays out. MicroVMs cannot be tagged and are split between the region's truner stacks."))
+			u.printf("%s\n", u.dim("Estimates: the spot or on-demand price at launch, disk and public IP; MicroVMs use bursting and snapshot reads measured on real bills. GitHub: list prices, MicroVMs at their peak size."))
+			if book != nil && ec2Estimates {
+				if meta, err := e.store().GetItem(ctx, billMetaPK); err == nil && meta.Int("tagged") == 0 && meta.Int("refetchFrom") == 0 {
+					u.warn("EC2 costs stay estimates until AWS can tell truner's machines from other EC2 in this account: run `truner costs --activate-tags` once")
+				}
+			}
 			return nil
 		},
 	}
 	cmd.Flags().IntVar(&days, "days", 30, "look back this many days")
 	cmd.Flags().StringVar(&by, "by", "repo", "group by repo, workflow or type")
+	cmd.Flags().BoolVar(&estimatesOnly, "estimates-only", false, "show truner's estimates and do not read the AWS bill")
+	cmd.Flags().BoolVar(&refresh, "refresh", false, "read the AWS bill now, even if it was read in the last 12 hours (Cost Explorer charges $0.01 per request)")
+	cmd.Flags().BoolVar(&activateTags, "activate-tags", false, "activate truner's tags as cost allocation tags in this AWS account, so that the bill shows EC2 machines apart from other EC2")
 	return cmd
 }
 

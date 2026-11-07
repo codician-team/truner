@@ -306,7 +306,7 @@ func (f *fakeAWS) ec2(w http.ResponseWriter, action string, form url.Values) {
 			lcXML = "<lifecycle>spot</lifecycle>"
 		}
 		write(`<fleetId>fleet-1</fleetId><fleetInstanceSet><item><instanceIds><item>` + id + `</item></instanceIds><instanceType>c7a.xlarge</instanceType>` + lcXML +
-			`<launchTemplateAndOverrides><overrides><subnetId>subnet-1</subnetId><availabilityZone>us-east-1a</availabilityZone></overrides></launchTemplateAndOverrides></item></fleetInstanceSet><errorSet/>`)
+			`<launchTemplateAndOverrides><overrides><subnetId>subnet-1</subnetId></overrides></launchTemplateAndOverrides></item></fleetInstanceSet><errorSet/>`)
 	case "DescribeImages":
 		if st, ok := f.images[form.Get("ImageId.1")]; ok {
 			write(`<imagesSet><item><imageId>` + form.Get("ImageId.1") + `</imageId><imageState>` + st + `</imageState><architecture>x86_64</architecture><rootDeviceName>/dev/sda1</rootDeviceName></item></imagesSet>`)
@@ -367,6 +367,8 @@ func (f *fakeAWS) ec2(w http.ResponseWriter, action string, form url.Values) {
 			b.WriteString(`</tagSet></item></instancesSet></item>`)
 		}
 		write(`<reservationSet>` + b.String() + `</reservationSet>`)
+	case "DescribeSubnets":
+		write(`<subnetSet><item><subnetId>` + form.Get("SubnetId.1") + `</subnetId><availabilityZone>us-east-1a</availabilityZone></item></subnetSet>`)
 	case "DescribeSpotPriceHistory":
 		write(`<spotPriceHistorySet><item><instanceType>c7a.xlarge</instanceType><productDescription>Linux/UNIX</productDescription><spotPrice>0.0500</spotPrice><availabilityZone>us-east-1a</availabilityZone></item></spotPriceHistorySet>`)
 	case "TerminateInstances":
@@ -746,6 +748,10 @@ func TestIntegrationHappyPath(t *testing.T) {
 	j = h.job(1001)
 	if j.Status != StatusCompleted || j.Conclusion != "success" || j.Cost <= 0 || j.RanOnType != "c7a.xlarge" {
 		t.Fatalf("expected completed with cost: %+v", j)
+	}
+	// EC2 Fleet names only the subnet, and a spot price depends on the zone.
+	if j.AZ != "us-east-1a" {
+		t.Fatalf("expected the subnet's availability zone: %+v", j)
 	}
 	if spend := h.cp.MonthSpend(context.Background()); spend <= 0 {
 		t.Fatalf("spend counter not updated: %v", spend)

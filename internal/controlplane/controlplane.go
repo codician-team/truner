@@ -54,6 +54,7 @@ type ControlPlane struct {
 	repoCfg    map[string]cachedRepoCfg
 	images     map[string]cachedImage
 	priceCache map[string]cachedPrice
+	subnetAZs  map[string]string
 	runnerRel  *runnerRelease
 	runnerAt   time.Time
 	count      int
@@ -105,6 +106,7 @@ func NewWithConfig(env *Env, cfg aws.Config) *ControlPlane {
 		repoCfg:    map[string]cachedRepoCfg{},
 		images:     map[string]cachedImage{},
 		priceCache: map[string]cachedPrice{},
+		subnetAZs:  map[string]string{},
 	}
 }
 

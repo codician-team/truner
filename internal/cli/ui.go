@@ -249,6 +249,14 @@ func money(v float64) string {
 	return fmt.Sprintf("$%.2f", v)
 }
 
+// approx formats an estimate, to tell it from what AWS billed.
+func approx(v float64) string {
+	if v == 0 {
+		return money(v)
+	}
+	return "~" + money(v)
+}
+
 func humanBytes(n int64) string {
 	const unit = 1024
 	if n < unit {

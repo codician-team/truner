@@ -13,7 +13,8 @@ Copy the prompt from [Install with an AI agent](ai-agents.md).
 - An **AWS account**. The installer needs administrator access, and so does
   `truner upgrade`. A narrower policy must still allow `cloudformation:SetStackPolicy`,
   which truner uses to [lock the installation](cli.md#upgrade) against older CLIs.
-  Day-to-day commands need much less.
+  Day-to-day commands need much less, including `ce:GetCostAndUsage` to
+  [show what AWS billed](costs.md#estimates-first-then-the-bill).
 - A **GitHub organization or personal account** on github.com.
 - A browser on any device, for two clicks on GitHub.
 

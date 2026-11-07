@@ -128,11 +128,62 @@ func TestUserDataRoundTrip(t *testing.T) {
 }
 
 func TestJobCost(t *testing.T) {
-	if c := jobCost(0.10, 40, 30*time.Minute); c < 0.05 || c > 0.0525 {
+	if c := jobCost(0.10, 0.004, 30*time.Minute); c < 0.0519 || c > 0.0521 {
 		t.Fatalf("cost %v", c)
 	}
 	if jobCost(0.10, 0, 10*time.Second) != jobCost(0.10, 0, time.Minute) {
 		t.Fatal("minimum billing is 60 seconds")
+	}
+}
+
+func TestOverheadPerHour(t *testing.T) {
+	near := func(a, b float64) bool { return a-b < 1e-9 && b-a < 1e-9 }
+	if got := (&Job{DiskGiB: 73}).overheadPerHour(); !near(got, 0.008) {
+		t.Fatalf("disk only: %v", got)
+	}
+	if got := (&Job{DiskGiB: 73, PublicIP: true, DiskIOPS: 3000, DiskMiBps: 125}).overheadPerHour(); !near(got, 0.013) {
+		t.Fatalf("included IOPS and throughput cost nothing: %v", got)
+	}
+	want := (100*0.08 + 5000*0.005 + 875*0.04) / 730
+	if got := (&Job{DiskGiB: 100, DiskIOPS: 8000, DiskMiBps: 1000}).overheadPerHour(); !near(got, want) {
+		t.Fatalf("provisioned disk: %v, want %v", got, want)
+	}
+}
+
+// The numbers from the bill of 2026-11-03 to 2026-11-05: a 60 s job on the
+// 4 vCPU MicroVM, which is mostly compute, and the short jobs that are mostly
+// snapshot reads.
+func TestMicroVMCostFollowsTheBill(t *testing.T) {
+	const launched = 1000
+	j := Job{InstanceID: "microvm-abc", LaunchedAt: launched, CPU: 4, Price: MicroHourlyPrice(4)}
+	base := MicroHourlyPrice(4) / 60 // one minute at the baseline
+	got := j.machineCost(time.Unix(launched+60, 0))
+	if want := base*MicroBurstFactor + (1.18+0.26*4)*0.00155; got < want-1e-9 || got > want+1e-9 {
+		t.Fatalf("cost %v, want %v", got, want)
+	}
+	if MicroStartPrice(1) >= MicroStartPrice(4) || MicroStartPrice(4) > 0.004 {
+		t.Fatalf("snapshot reads: %v, %v", MicroStartPrice(1), MicroStartPrice(4))
+	}
+}
+
+func TestBillEstimate(t *testing.T) {
+	const at = 1_762_300_800 // 2025-11-05 00:00 UTC
+	spot := Job{LaunchedAt: at, CompletedAt: at + 3600, DiskGiB: 73, PublicIP: true, Cost: 0.20, InstanceType: "c7a.xlarge", Lifecycle: "on-demand", RanOnType: "m7a.xlarge", RanOnLifecycle: "spot"}
+	e := spot.BillEstimate("truner")
+	if e.Stack != "truner" || e.Day != "2025-11-05" || e.Key != "SpotUsage:m7a.xlarge" {
+		t.Fatalf("estimate %+v", e)
+	}
+	if e.Overhead < 0.0129 || e.Overhead > 0.0131 || e.Machine+e.Overhead != 0.20 {
+		t.Fatalf("split %+v", e)
+	}
+	micro := Job{LaunchedAt: at, MachineDone: at + 60, Cost: 0.05, InstanceID: "microvm-1", InstanceType: "microvm-4vcpu", Lifecycle: "microvm", DiskGiB: 73}
+	if e := micro.BillEstimate("truner"); e.Key != "microvm" || e.Overhead != 0 || e.Machine != 0.05 {
+		t.Fatalf("micro %+v", e)
+	}
+	// Overhead never exceeds the estimate, e.g. for a record with a small cost.
+	cheap := Job{LaunchedAt: at, UpdatedAt: at + 3600, DiskGiB: 1000, Cost: 0.01, InstanceType: "c7a.xlarge", Lifecycle: "spot"}
+	if e := cheap.BillEstimate("truner"); e.Overhead != 0.01 || e.Machine != 0 {
+		t.Fatalf("clamped %+v", e)
 	}
 }
 

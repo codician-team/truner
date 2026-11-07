@@ -14,6 +14,7 @@ import (
 	pricingtypes "github.com/aws/aws-sdk-go-v2/service/pricing/types"
 
 	"github.com/codician-team/truner/internal/config"
+	"github.com/codician-team/truner/internal/costs"
 )
 
 type cachedPrice struct {
@@ -21,8 +22,15 @@ type cachedPrice struct {
 	at    time.Time
 }
 
-// gp3 storage list price (USD per GiB-month), used for per-job estimates.
-const gp3PerGiBMonth = 0.08
+// List prices (USD) for the parts of a machine outside its instance price, used
+// for per-job estimates.
+const (
+	hoursPerMonth     = 730
+	gp3PerGiBMonth    = 0.08
+	gp3PerIOPSMonth   = 0.005 // above the included 3000 IOPS
+	gp3PerMiBpsMonth  = 0.04  // above the included 125 MiB/s
+	publicIPv4PerHour = 0.005
+)
 
 // HourlyPrice returns the USD/hour price of an instance. Spot prices are
 // looked up for the exact AZ, on-demand prices through the Pricing API.
@@ -143,15 +151,77 @@ func parseOnDemand(raw string) (float64, bool) {
 	return 0, false
 }
 
+// subnetAZ returns a subnet's availability zone, or "" if it cannot be read.
+// EC2 Fleet names only the subnet of the machines it launches in a subnet.
+func (cp *ControlPlane) subnetAZ(ctx context.Context, subnet string) string {
+	cp.mu.Lock()
+	az, ok := cp.subnetAZs[subnet]
+	cp.mu.Unlock()
+	if ok {
+		return az
+	}
+	out, err := cp.EC2.DescribeSubnets(ctx, &ec2.DescribeSubnetsInput{SubnetIds: []string{subnet}})
+	if err != nil || len(out.Subnets) == 0 {
+		cp.Log.Warn("could not read the subnet's availability zone", "subnet", subnet, "err", err)
+		return ""
+	}
+	az = aws.ToString(out.Subnets[0].AvailabilityZone)
+	cp.mu.Lock()
+	cp.subnetAZs[subnet] = az
+	cp.mu.Unlock()
+	return az
+}
+
 // jobCost estimates the cost of running a machine for d.
-func jobCost(pricePerHour float64, diskGiB int, d time.Duration) float64 {
-	if d < 0 {
-		d = 0
+func jobCost(pricePerHour, overheadPerHour float64, d time.Duration) float64 {
+	return (pricePerHour + overheadPerHour) * billedDuration(d).Hours()
+}
+
+// billedDuration applies EC2's 60 second minimum (Linux and Windows).
+func billedDuration(d time.Duration) time.Duration {
+	return max(d, time.Minute)
+}
+
+// overheadPerHour is what a machine costs besides its instance: its disk, with
+// any provisioned IOPS and throughput, and its public IPv4 address.
+func (j *Job) overheadPerHour() float64 {
+	perMonth := float64(j.DiskGiB) * gp3PerGiBMonth
+	if j.DiskIOPS > 3000 {
+		perMonth += float64(j.DiskIOPS-3000) * gp3PerIOPSMonth
 	}
-	// EC2 bills per second with a 60 second minimum (Linux and Windows).
-	if d < time.Minute {
-		d = time.Minute
+	if j.DiskMiBps > 125 {
+		perMonth += float64(j.DiskMiBps-125) * gp3PerMiBpsMonth
 	}
-	h := d.Hours()
-	return pricePerHour*h + float64(diskGiB)*gp3PerGiBMonth/730*h
+	h := perMonth / hoursPerMonth
+	if j.PublicIP {
+		h += publicIPv4PerHour
+	}
+	return h
+}
+
+// EndedAt returns when the job's cost was last counted (unix seconds).
+func (j *Job) EndedAt() int64 {
+	switch {
+	case j.CompletedAt > 0:
+		return j.CompletedAt
+	case j.MachineDone > 0:
+		return j.MachineDone
+	}
+	return j.UpdatedAt
+}
+
+// BillEstimate splits a job's estimate into what the AWS bill's machine lines
+// cover and the rest, for comparing the job with the bill.
+func (j *Job) BillEstimate(stack string) costs.JobEstimate {
+	e := costs.JobEstimate{
+		Stack: stack,
+		Day:   time.Unix(j.EndedAt(), 0).UTC().Format(time.DateOnly),
+		Key:   costs.BillKey(firstNonEmpty(j.RanOnType, j.InstanceType), firstNonEmpty(j.RanOnLifecycle, j.Lifecycle)),
+	}
+	if e.Key != costs.MicroVMKey && j.LaunchedAt > 0 {
+		d := time.Duration(j.EndedAt()-j.LaunchedAt) * time.Second
+		e.Overhead = min(j.overheadPerHour()*billedDuration(d).Hours(), j.Cost)
+	}
+	e.Machine = j.Cost - e.Overhead
+	return e
 }

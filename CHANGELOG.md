@@ -1,7 +1,24 @@
 # Changelog
 
-## Unreleased
+## v0.1.6
 
+- **`truner costs` and `truner status` show what AWS billed.** A job's cost starts as an
+  estimate, and AWS Cost Explorer's number replaces it about a day after the day ended.
+  `truner jobs` marks estimates with `~`. EC2 counts only with the `truner:stack` tag, so
+  other EC2 in the account stays out, even of the same instance type: run
+  `truner costs --activate-tags` once per account. MicroVMs cannot be tagged and are split
+  between the region's truner stacks. Needs `ce:GetCostAndUsage`, and reads the bill at most
+  every 12 hours ($0.01 per request); `--estimates-only` does not read it.
+- **Better cost estimates.** Measured on the AWS bill of 304 MicroVM jobs, the old estimate
+  was 30% too high: it left out bursting, which costs 1.33 times the baseline, but counted
+  3.1 times the snapshot data jobs really read. It is now within 3% for those days. EC2
+  estimates use the spot price of the machine's own availability zone (the zone was never
+  recorded, so a price from any zone was used), and count public IPv4 addresses and
+  provisioned disk IOPS and throughput.
+- **The comparison with GitHub-hosted runners is like for like.** It uses GitHub's list
+  price per runner size instead of a rate per core, the cores of the job's machine (a pinned
+  `type=c8a.4xlarge` counted as 2), and Arm64 prices at the peak size for MicroVMs (they were
+  priced as x64 at the baseline).
 - **Node 26 starts on MicroVMs.** Node's official Arm64 build links `libatomic.so.1`,
   which the MicroVM image did not have, so `node` exited with status 127 (finding 8 of
   the [MicroVMs field report](docs/field-report-microvms.md)). The image now installs
