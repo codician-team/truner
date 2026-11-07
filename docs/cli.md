@@ -194,7 +194,10 @@ truner costs [--by repo|workflow|type] [--days 30]
 ### logs
 
 A runner machine's log (bootstrap, agent steps and runner output), or the control plane's
-logs.
+logs. The agent uploads the log when the machine ends, and also while the runner waits
+for its job: after a minute, then every 5 minutes. When the control plane terminates a
+machine before it took its job, it keeps the machine's console output too
+(`logs/<date>/<runner>.console.log`), and `truner logs` prints it after the log.
 
 ```bash
 truner logs 123456789                  # a job id or runner name

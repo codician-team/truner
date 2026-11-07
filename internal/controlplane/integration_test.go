@@ -58,6 +58,7 @@ type fakeAWS struct {
 	fleetErr  string // error code every CreateFleet returns
 	nextID    int
 	objects   map[string][]byte // S3, keyed by "bucket/key"
+	consoles  []string          // instances whose console output was read
 	images    map[string]string // AMI id -> state
 
 	microImages   map[string]*fakeMicroImage
@@ -379,6 +380,10 @@ func (f *fakeAWS) ec2(w http.ResponseWriter, action string, form url.Values) {
 		write(`<instancesSet/>`)
 	case "DescribeLaunchTemplates":
 		write(`<launchTemplates/>`)
+	case "GetConsoleOutput":
+		f.consoles = append(f.consoles, form.Get("InstanceId"))
+		out := base64.StdEncoding.EncodeToString([]byte("[  OK  ] Reached target Multi-User System.\n"))
+		write(`<instanceId>` + form.Get("InstanceId") + `</instanceId><timestamp>2026-11-05T10:00:00.000Z</timestamp><output>` + out + `</output>`)
 	case "CreateTags":
 		for k, v := range form {
 			if strings.HasPrefix(k, "ResourceId.") {
@@ -782,6 +787,33 @@ func TestIntegrationCancelledBeforePickup(t *testing.T) {
 	}
 	if h.gh.deleted == 0 {
 		t.Fatal("runner registration must be removed")
+	}
+	key := "data/" + ConsoleLogKey(MachineLogKey(j.RunnerName, time.Unix(j.LaunchedAt, 0)))
+	if got := string(h.aws.objects[key]); !strings.Contains(got, "console output of "+j.InstanceID) ||
+		!strings.Contains(got, "its job ended before a runner picked it up") || !strings.Contains(got, "Reached target Multi-User System") {
+		t.Fatalf("the console output of a machine that took no job must be kept at %s: %q", key, got)
+	}
+}
+
+// The janitor keeps the console output of a machine whose runner did not take
+// its job in time, before it terminates it.
+func TestIntegrationIdleMachineKeepsConsole(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	h.webhook("queued", 3101, []string{"truner/cpu=2"}, "", "")
+	h.drainQueue()
+	j := h.job(3101)
+	h.cp.Store.UpdateJob(ctx, 3101, map[string]any{"launchedAt": time.Now().Add(-26 * time.Minute).Unix()}, nil)
+	insts, _ := h.cp.ManagedInstances(ctx)
+	if err := h.cp.reconcileJobs(ctx, insts, nil); err != nil {
+		t.Fatal(err)
+	}
+	if st := h.aws.instances[j.InstanceID].state; st != "terminated" || len(h.aws.consoles) != 1 || h.aws.consoles[0] != j.InstanceID {
+		t.Fatalf("expected the console read before termination: state %s, consoles %v", st, h.aws.consoles)
+	}
+	key := "data/" + ConsoleLogKey(MachineLogKey(j.RunnerName, time.Now().Add(-26*time.Minute)))
+	if got := string(h.aws.objects[key]); !strings.Contains(got, "runner did not pick up the job in time") {
+		t.Fatalf("console output at %s: %q", key, got)
 	}
 }
 

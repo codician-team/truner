@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/codician-team/truner/internal/agentcfg"
 	"github.com/codician-team/truner/internal/cacheproxy"
@@ -94,5 +95,16 @@ func TestNewestNode(t *testing.T) {
 	}
 	if got := newestNode(filepath.Join(dir, "missing")); got != "" {
 		t.Fatalf("no externals must give no node, got %q", got)
+	}
+}
+
+func TestIdleLogDue(t *testing.T) {
+	start := time.Unix(1_800_000_000, 0)
+	at := func(d time.Duration) time.Time { return start.Add(d) }
+	if idleLogDue(start, time.Time{}, at(59*time.Second)) || !idleLogDue(start, time.Time{}, at(time.Minute)) {
+		t.Fatal("the first upload is due after a minute")
+	}
+	if idleLogDue(start, at(time.Minute), at(5*time.Minute)) || !idleLogDue(start, at(time.Minute), at(6*time.Minute)) {
+		t.Fatal("then every 5 minutes")
 	}
 }

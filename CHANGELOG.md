@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **Machines that take no job leave evidence.** When a job ended before pickup, the
+  webhook terminated its machine and no log was uploaded: job 127285209781 sat 602 s on
+  a live machine, held up a deploy group and left nothing to diagnose. The control plane
+  now keeps the console output of an EC2 machine it terminates before it took its job,
+  as `logs/<date>/<runner>.console.log`, and `truner logs <job-id>` prints it. The agent
+  also uploads its log while the runner waits for a job, after a minute and then every 5
+  minutes, and right away when the machine shuts down. The control plane needs
+  `ec2:GetConsoleOutput`, which `truner upgrade` adds.
 - **Docker jobs start faster.** In one repository's builds, `docker/setup-buildx-action`
   took 27 s at the median: about 18 s for the first `docker version` and `docker info`,
   which read Docker's binaries from a lazily restored volume, and about 9 s to pull

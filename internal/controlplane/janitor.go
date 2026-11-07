@@ -247,6 +247,7 @@ func (cp *ControlPlane) checkUnpickedJob(ctx context.Context, gh *github.Client,
 	reason := "machine stopped before picking up the job"
 	if alive {
 		reason = "runner did not pick up the job in time"
+		cp.saveConsole(ctx, j, reason)
 		cp.TerminateInstances(ctx, j.InstanceID)
 	}
 	if j.RunnerID != 0 {
